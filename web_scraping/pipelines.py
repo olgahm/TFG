@@ -17,7 +17,7 @@ class BidsPipeline(object):
     MY_LOG_FORMAT = ("%(asctime)s %(levelname)s %(message)s")
     my_logger = logging.getLogger(__name__)
     my_logger.setLevel(logging.DEBUG)
-    my_logger_file_handler = FileHandler('scrapy_spiders/Bids/log/bids_spider.log')
+    my_logger_file_handler = FileHandler('web_scraping/Bids/log/bids_spider.log')
     my_logger_file_handler.setLevel(logging.DEBUG)
     my_logger_file_handler.setFormatter(Formatter(MY_LOG_FORMAT))
     my_logger.addHandler(my_logger_file_handler)

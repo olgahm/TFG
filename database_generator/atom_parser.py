@@ -1,18 +1,12 @@
 import xml.etree
 from xml.etree import ElementTree
-from langdetect import detect
 import requests
 import re
 import iso8601
 import pytz
-from copy import deepcopy as copy
-from config import get_db_connection
-from datetime import datetime
-from database_generator.info_storage import update_data
 from database_generator.info_storage import is_stored
 from database_generator.info_storage import is_new_or_update
 from database_generator.info_storage import is_deleted
-from scrapy_spiders.Bids_new.items import ContractingItem
 
 
 def get_next_link(root):

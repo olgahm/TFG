@@ -12,12 +12,10 @@ Created on May 11 2018
 """
 from scrapy import Spider
 from scrapy import Request
-import requests
 
 from database_generator.atom_parser import process_xml_atom
-from database_generator.info_storage import update_data
 from database_generator.atom_parser import get_next_link
-from scrapy_spiders.Bids_new.items import ContractingItem
+from web_scraping.items import ContractingItem
 import xml.etree.ElementTree
 import re
 from datetime import datetime
@@ -25,8 +23,8 @@ from datetime import datetime
 
 class BidsSpider(Spider):
     name = 'BidsSpider'  # Name of spider
-    custom_settings = {"ITEM_PIPELINES": {'scrapy_spiders.Bids_new.pipelines.BidsPipeline': 300},
-                       "LOG_FILE": 'scrapy_spiders/Bids_new/log/scrapy_bids_spider.log', "CONCURRENT_REQUESTS": 30}
+    custom_settings = {"ITEM_PIPELINES": {'web_scraping.Bids.pipelines.BidsPipeline': 300},
+                       "LOG_FILE": 'web_scraping/Bids/log/scrapy_bids_spider.log', "CONCURRENT_REQUESTS": 30}
 
     start_urls = ["http://www.hacienda.gob.es/es-ES/GobiernoAbierto/Datos%20Abiertos/Paginas"
                   "/licitaciones_plataforma_contratacion.aspx"]
