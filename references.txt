@@ -1,0 +1,4 @@
+https://radimrehurek.com/gensim/
+https://en.wikipedia.org/wiki/Vector_space_model
+https://en.wikipedia.org/wiki/Tf%E2%80%93idf
+https://stackoverflow.com/questions/52416268/how-to-use-pdfminer-sixs-pdf2txt-py-in-python-script-and-outside-command-line: Codigo para usar pdfminer en windows
