@@ -34,8 +34,6 @@
         "clasificacion_empresarial_solicitada",
         "codigo_clasificacion_empresarial_solicitada",
         "condiciones_admision",
-        "codigo_critario_evaluacion_financiera",
-        "descripcion_critario_evaluacion_financiera",
         "objeto_subcontratacion",
         "id_sobre",
         "tipo_documento_sobre",
@@ -276,6 +274,18 @@
         "bid_id",
         "codigo_clasificacion_empresarial",
         "clasificacion_empresarial"
+      ]
+    }
+  },
+  "texts": {
+    "primary_key": "bid_id",
+    "fields": {
+      "TEXT": [
+        "bid_id",
+        "pliego_tecnico"
+      ],
+      "BOOLEAN": [
+        "ocr"
       ]
     }
   }

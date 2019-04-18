@@ -7,19 +7,15 @@ import os
 
 
 def model_generator():
-    # Check if there is any file with the processed corpus (This may be deleted)
-    if os.path.exists('corpus.json'):
-        with open('corpus.json', 'r') as corpus_file:
-            preprocessed_corpus = eval(corpus_file.read())
-    else:
-        df = get_db_connection().readDBtable(tablename='docs', selectOptions='Expediente_Licitacion, Texto_Pliego')
-        # TODO: Necesito el nombre de la licitacion para concatenar documentos que son demasiado largos
-        bids = df['Expediente_Licitacion'].tolist()
-        texts = df['Texto_Pliego'].tolist()
 
-        corpus = join_long_docs(bids, texts)
+    df = get_db_connection().readDBtable(tablename='docs', selectOptions='Expediente_Licitacion, Texto_Pliego')
+    # TODO: Necesito el nombre de la licitacion para concatenar documentos que son demasiado largos
+    bids = df['Expediente_Licitacion'].tolist()
+    texts = df['Texto_Pliego'].tolist()
 
-        preprocessed_corpus = preprocess_corpus(corpus)
+    corpus = join_long_docs(bids, texts)
+
+    preprocessed_corpus = preprocess_corpus(corpus)
 
     dictionary = corpora.Dictionary(preprocessed_corpus)
     # Importante comprender la info que da esto

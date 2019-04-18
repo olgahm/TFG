@@ -1,107 +1,109 @@
-from glob import glob
 from io import BytesIO
-from unidecode import unidecode
 import re
 import requests
-import string
-import subprocess
-import os
-import traceback
-import pytesseract
-import glob
-import os
-from wand.image import Image as WImage
-from PIL import ImageEnhance, ImageFilter
-from PIL import Image as Img
+from tika import parser
+import zipfile
+import rarfile
 
-from pdfminer.converter import TextConverter
-from pdfminer.layout import LAParams
-from pdfminer.pdfinterp import PDFPageInterpreter
-from pdfminer.pdfinterp import PDFResourceManager
-from pdfminer.pdfpage import PDFPage
 from database_generator.info_storage import item_to_database
-from database_generator.info_storage import my_logger as doc_logger
+from config import get_db_connection
+from config import text_logger
+from bs4 import BeautifulSoup
 
 
-def parse_docs(bids, doc_links, formats, process_id):
-    for index, url in enumerate(doc_links):
-        if 'pdf' in formats[index]:
-            get_pdf_text(bids[index], url, process_id)
+def store_document_text(url, bid_id, doc_id, hash):
+    doc_format = doc_id.split('.')[-1].lower()
+    text_logger.debug(f'Processing {doc_format} document')
+    doc_formats = ['pdf', 'doc', 'docx', 'zip', 'rar', 'rtf', 'html', 'htm']
+    if doc_format in doc_formats:
+        response = requests.get(url)
+        to_parse = response.content
+        content_type = response.headers['Content-Type']
+        if doc_format not in content_type:
+            # See url content
+            soup = BeautifulSoup(to_parse, 'html.parser')
+            doc_link = soup.find('meta')
+            if doc_link is not None:
+                relative_link = doc_link['content']
+                relative_link = re.search("\\'(.*)\\'", relative_link).group(1)
+                abs_link = f'https://contrataciondelestado.es{relative_link}'
+                response = requests.get(abs_link)
+                to_parse = response.content
+            else:
+                if 'Documento no accesible' in response.content.decode('utf8'):
+                    get_db_connection().deleteRowTables('docs', f"doc_url='{url}' and doc_type='tecnico'")
+                    text_logger.debug(f'Document in {url} not available. Deleting entry in database...')
+                elif 'htm' in doc_format:
+                    text_logger.debug(f'Study this {doc_format} url: {url}')
+                else:
+                    text_logger.debug(f'Unprocessed url {url}')
+                return
+        if 'zip' in doc_format:
+            file_counter = 0
+            with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
+                for zipinfo in zip_file.infolist():
+                    if zipinfo.filename[-1] != '/':
+                        zipfile_doc_format = zipinfo.filename.split('.')[-1]
+                        if zipfile_doc_format.lower() in doc_formats:
+                            with zip_file.open(zipinfo) as file:
+                                to_parse = file.read()
+                                text, ocr = get_pdf_text(to_parse)
+                                if text:
+                                    file_counter += 1
+                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'pliego_tecnico': text,
+                                            'storage_mode': 'new', 'ocr': ocr}
+                                    item_to_database([item], 'texts')
+                                else:
+                                    print(f'We may need and OCR {url}')
+                        else:
+                            print(f'Unstudied format inside zip {zipfile_doc_format}')
+            return
+        elif 'rar' in doc_format:
+            file_counter = 0
+            with rarfile.RarFile(BytesIO(response.content)) as rar_file:
+                for rarinfo in rar_file.infolist():
+                    if rarinfo.filename[-1] != '/':
+                        rarfile_doc_format = rarinfo.filename.split('.')[-1]
+                        if rarfile_doc_format.lower() in doc_formats:
+                            with rar_file.open(rarinfo) as file:
+                                to_parse = file.read()
+                                text, ocr = get_pdf_text(to_parse)
+                                if text:
+                                    file_counter += 1
+                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'pliego_tecnico': text,
+                                            'storage_mode': 'new', 'ocr': ocr}
+                                    item_to_database([item], 'texts')
+                                else:
+                                    print(f'We may need and OCR {url}')
+                        else:
+                            print(f'Unstudied format inside rar {rarfile_doc_format}')
+            return
+    else:
+        print(f'{doc_format}: {url}')
+        return
+    text, ocr = get_pdf_text(to_parse)
+    if text:
+        item = {'bid_id': bid_id, 'pliego_tecnico': text, 'storage_mode': 'new', 'ocr': ocr}
+        item_to_database([item], 'texts')
+    else:
+        print(f'We may need and OCR {url}')
 
 
-def get_pdf_text(bid_name, url, process_id):
-    doc_logger.debug(f'Process-{process_id}. Extracting text from {bid_name}')
-    doc_metadata = {'id_licitacion': bid_name}
-    file_name = f'document_parsing/PDF/{re.sub(f"[./{string.punctuation}]", "_", bid_name).strip()}.pdf'
-    print(url)
-    r = requests.get(url)
-    with open(file_name, 'wb') as fopen:
-        fopen.write(r.content)
-    doc_content = pdf2txt(file_name, bid_name, doc_metadata)
-    if doc_content:
-        doc_metadata['texto_pliego'] = doc_content
-        item_to_database(doc_metadata, process_id)
-
-
-def pdf2txt(path, bid_name, doc_metadata):
-    try:
-        final_text = extract_pdf_txt(path)
-    except:
-        return ''
-    final_text = unidecode(final_text)
-    final_text = re.sub(f"""[%©&!.º*°●§‘'’<«>~-—…|“\"?(),$/{string.punctuation}]""", '', final_text)
-    final_text = re.sub("[	 \n]+", ' ', final_text).strip()
-    final_text = ' '.join([word for word in final_text.split() if len(word) > 1])
-    if not final_text or final_text.isspace() and final_text is not None or len(final_text.split()) < 10:
+def get_pdf_text(buffer):
+    while True:
         try:
-            doc_metadata['formato_pliego'] = 'pdf_ocr'
-            with WImage(filename=path, resolution=350) as img:
-                img.save(filename=f'{re.sub(f"[./{string.punctuation}]", "_", bid_name).strip()}.jpeg')
-            text = str()
-            for file in glob.glob('*.jpeg'):
-                with Img.open(file) as im:
-                    im = im.filter(ImageFilter.MedianFilter())
-                    enhancer = ImageEnhance.Contrast(im)
-                    im = enhancer.enhance(2)
-                    im = im.convert('1')
-                    im.save(file)
-                text += pytesseract.image_to_string(Img.open(file), lang='spa')
-                os.remove(file)
-            print(text)
-            final_text = re.sub(f"""[%©&!.º*°●§‘'’<«>~-—…“\"|?(),$/{string.punctuation}]""", '', unidecode(text))
-            final_text = re.sub("[ \n]+", ' ', final_text).strip()
-            final_text = ' '.join([word for word in final_text.split() if len(word) > 1])
+            parsed_data = parser.from_buffer(buffer)
+            break
         except:
-            print(traceback.format_exc())
-            final_text = ''
-    os.remove(path)
-    return final_text
-
-
-def extract_pdf_txt(path):
-    """Implementation of pdfminer's command pdf2txt
-
-    :param path: Path to PDF document to be parsed
-    :return: Extracted text
-    """
-    manager = PDFResourceManager()
-    retstr = BytesIO()
-    layout = LAParams(all_texts=True)
-    device = TextConverter(manager, retstr, laparams=layout)
-    filepath = open(path, 'rb')
-    interpreter = PDFPageInterpreter(manager, device)
-    text = ''
-    try:
-        for page in PDFPage.get_pages(filepath, check_extractable=True):
-            interpreter.process_page(page)
-
-        text = retstr.getvalue()
-        device.close()
-        retstr.close()
-        filepath.close()
-        text = text.decode('utf-8')
-    except:
-        filepath.close()
-        text = ''
-    finally:
-        return text
+            continue
+    ocr = False
+    if 'content' in parsed_data and parsed_data['content'] is None:
+        headers = {'X-Tika-PDFextractInlineImages': 'true'}
+        parsed_data = parser.from_buffer(buffer, headers=headers)
+        ocr = True
+        if parsed_data['content'] is None:
+            return '', False
+    text = parsed_data['content']
+    final_text = re.sub("[	 \n\s]+", ' ', text).strip()
+    final_text = final_text.replace('\\\\', '\\')
+    return final_text, ocr

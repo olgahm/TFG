@@ -7,22 +7,22 @@ Created on Aug 31 2018
 @author: Olga Herranz Macias
 
 """
-
-from multiprocessing import Pool
+from multiprocessing import Process, Manager, Queue, Lock, Pool
 import sys
 import re
 
-from config import get_db_connection
-from database_generator.bid_crawler import get_urls_to_crawl
-from database_generator.bid_crawler import process_url
-from database_generator.doc_parser import store_document_text
-from database_generator.info_storage import get_all_table_names
-from database_generator.info_storage import get_mandatory_keys
-from database_generator.info_storage import get_primary_key
-from toppic_modelling.model_generator import model_generator
 
-actions = {'1': 'update_database()', '2': 'extract_text_from_docs()', '3': 'reconstruct_database()',
-           '4': 'generate_model()', '0': 'exit()'}
+from config import get_db_connection
+from config import split_array
+from database_generator.info_storage import get_all_table_names
+from database_generator.info_storage import update_data
+from database_generator.bid_crawler import zip_processing
+from database_generator import info_storage
+from toppic_modelling.model_generator import model_generator
+from database_generator.doc_parser import store_document_text
+
+actions = {'1': 'update_database()', '2': 'extract_text_from_docs()', '4': 'reconstruct_database()',
+           '3': 'generate_model()', '0': 'exit()'}
 
 
 # Show Main menu
@@ -32,11 +32,10 @@ def start_main_menu():
         print("Choose one of the following actions:")
         print("1. Fill database")
         print("2. Extract text from documents")
-        print("3. [Re]Construct database from scratch")
-        print("4. Generate topic model")
+        print("3. Generate topic model")
+        print("4. [Re]Construct database from scratch")
         print("\n0. Exit")
         option = input(" >>  ")
-        # option = "1"
         parse_option(option)
     return
 
@@ -70,7 +69,7 @@ def extract_text_from_docs():
     for index in range(len(urls)):
         if bid_ids[index] not in stored_bids:
             tech_docs.append([urls[index], bid_ids[index], doc_ids[index], hashes[index]])
-    p = Pool(2)
+    p = Pool(1)
     p.starmap(store_document_text, tech_docs)
     p.join()
     p.close()
@@ -81,8 +80,8 @@ def reconstruct_database():
     primary_keys = list()
     tables = get_all_table_names()
     for table in tables:
-        mandatory_fields.append(get_mandatory_keys(table))
-        primary_keys.append(get_primary_key(table))
+        mandatory_fields.append(info_storage.get_mandatory_keys(table))
+        primary_keys.append(info_storage.get_primary_key(table))
     for index, table in enumerate(tables):
         get_db_connection().deleteDBtables(table)
         get_db_connection().createDBtable(table, mandatory_fields[index], primary_keys[index])
@@ -94,14 +93,11 @@ def generate_model():
 
 
 def update_database():
-    urls = get_urls_to_crawl()
-    pool = Pool(1)
-    pool.map(process_url, urls)
-    pool.join()
-    pool.close()
-    extract_text_from_docs()
+    pass
 
     print('stopped: check the items in the manager')
+
+
 
 if __name__ == '__main__':
     start_main_menu()
