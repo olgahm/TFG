@@ -5,3 +5,4 @@ test.py
 selenium_crawler.log
 log/
 venv/
+__pycache__/

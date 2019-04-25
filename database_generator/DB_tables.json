@@ -79,8 +79,8 @@
         "doc_url",
         "bid_id",
         "doc_type",
-        "texto",
-        "doc_hash"
+        "doc_hash",
+        "idioma"
       ]
     }
   },
@@ -282,7 +282,8 @@
     "fields": {
       "TEXT": [
         "bid_id",
-        "pliego_tecnico"
+        "texto_original",
+        "palabras_texto"
       ],
       "BOOLEAN": [
         "ocr"

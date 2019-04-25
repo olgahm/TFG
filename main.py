@@ -70,7 +70,7 @@ def extract_text_from_docs():
     for index in range(len(urls)):
         if bid_ids[index] not in stored_bids:
             tech_docs.append([urls[index], bid_ids[index], doc_ids[index], hashes[index]])
-    p = Pool(2)
+    p = Pool(1)
     p.starmap(store_document_text, tech_docs)
     p.join()
     p.close()
@@ -95,13 +95,14 @@ def generate_model():
 
 def update_database():
     urls = get_urls_to_crawl()
-    pool = Pool(1)
-    pool.map(process_url, urls)
-    pool.join()
-    pool.close()
-    extract_text_from_docs()
+    # pool = Pool(1)
+    # pool.map(process_url, urls)
+    for url in urls:
+        process_url(url)
+    print('Finished')
+    # remove_duplicates()
+    # extract_text_from_docs()
 
-    print('stopped: check the items in the manager')
 
 if __name__ == '__main__':
     start_main_menu()

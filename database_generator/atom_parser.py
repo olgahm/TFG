@@ -4,7 +4,7 @@ import re
 import iso8601
 import pytz
 from database_generator.info_storage import is_stored
-from database_generator.info_storage import update_data
+from database_generator.info_storage import get_all_tables_info
 from database_generator.info_storage import is_new_or_update
 from database_generator.info_storage import is_deleted
 from database_generator.info_storage import item_to_database
@@ -119,50 +119,6 @@ def process_xml_atom(root, manager):
         last_updated, offset = parse_rfc3339_time(last_updated)
         if not is_new_or_update(id, last_updated, offset, bid_metadata, stored_data):
             continue
-        xmlstr = etree.tostring(entry, encoding='utf8', method='xml').decode('utf8')
-        # TODO: Remove after checking everything is OK. DEBUG FOR NON ANALYZED FIELDS
-        stop_terms = ['SubmissionMethod', 'Event>', 'ProcessJustification', '<SubcontractTerms',
-                      'DocumentProviderParty', 'TenderRecipientParty', 'AdditionalInformationParty', 'Appeal',
-                      'TenderPreparation']
-        printed = False
-        for term in stop_terms:
-            if term in xmlstr:
-                if not printed:
-                    print(xmlstr)
-                    printed = True
-                print(f'Found term: {term}')
-        if printed:
-            continue
-        # Check duplicate tags TODO: Remove when all is OK
-        tags = re.findall('<[^/].*?>', xmlstr.replace('/>', '>'))
-        for index, tag in enumerate(tags):
-            tags[index] = re.sub(' .*', '', tag)
-            if tags[index][-1] != '>':
-                tags[index] += '>'
-        # TODO: Name tag in country
-        known_dup_tags = ['<PartyName>', '<Name>', '<ParentLocatedParty>', '<AdditionalPublicationDocumentReference>',
-                          '<IssueDate>', '<ID>', '<Attachment>', '<ExternalReference>', '<URI>',
-                          '<AdditionalPublicationStatus>', '<PublicationMediaName>',
-                          '<RequiredCommodityClassification>', '<ItemClassificationCode>', '<ValidNoticeInfo>',
-                          '<NoticeTypeCode>', '<TaxExclusiveAmount>', '<TenderResult>', '<ResultCode>',
-                          '<ReceivedTenderQuantity>', '<WinningParty>', '<PartyIdentification>', '<EndDate>',
-                          '<ProcurementProjectLotID>', '<LegalMonetaryTotal>', '<Country>', '<IdentificationCode>',
-                          '<StartDate>', '<AwardedTenderedProject>', '<EndTime>', '<Description>',
-                          '<SpecificTendererRequirement>', '<RequirementTypeCode>', '<DocumentHash>',
-                          '<AdditionalDocumentReference>', '<AwardingCriteria>', '<EvaluationCriteriaTypeCode>',
-                          '<WeightNumeric>', '<ProcurementProject>', '<BudgetAmount>', '<ProcurementProjectLot>',
-                          '<RequiredFinancialGuarantee>', '<GuaranteeTypeCode>', '<TotalAmount>', '<AwardDate>',
-                          '<LowerTenderAmount>', '<HigherTenderAmount>', '<PayableAmount>', '<Contract>',
-                          '<AmountRate>', '<TechnicalEvaluationCriteria>', '<FinancialEvaluationCriteria>',
-                          '<ContractModification>', '<Note>', '<ContractID>',
-                          '<ContractModificationLegalMonetaryTotal>', '<FinalLegalMonetaryTotal>', '<CityName>',
-                          '<PostalZone>', '<ClassificationCategory>', '<CodeValue>', '<LiabilityAmount>',
-                          '<ContractModificationDurationMeasure>', '<FinalDurationMeasure>']
-        dup_tags = [tag for tag in tags if tags.count(tag) > 1 and tag not in known_dup_tags]
-        if dup_tags:
-            print(dup_tags)
-            print(xmlstr)
-            continue
         bid_metadata['bid_uri'] = id
         bid_metadata['title'] = entry.find('title').text
         bid_metadata['link'] = entry.find('link').attrib['href']
@@ -214,7 +170,6 @@ def process_xml_atom(root, manager):
                 if end_date is not None:
                     bid_metadata['fecha_fin'] = end_date.text
             ## CODIGO CPV (0-N)
-            bid_cpvs_to_database = list()
             for code in procurement_project.iterfind('RequiredCommodityClassification'):
                 cpv_metadata = bid_cpv_schema.copy()
                 cpv_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -225,8 +180,7 @@ def process_xml_atom(root, manager):
                 if url_cpv_code:
                     code_dict = code_mapper(url_cpv_code, gc_dict)
                     cpv_metadata['code_description'] = code_dict.get(cpv_code, '')
-                if not is_stored('bid_cpv_codes', cpv_metadata, bid_metadata['storage_mode'], stored_data):
-                    bid_cpvs_to_database.append(cpv_metadata)
+                bid_cpvs_to_database.append(cpv_metadata)
             ## TIPO DE CONTRATO (0-1)
             type_element = procurement_project.find('TypeCode')
             if type_element is not None:
@@ -244,7 +198,6 @@ def process_xml_atom(root, manager):
                     code_dict = code_mapper(url_code, gc_dict)
                     bid_metadata['subtipo_contrato'] = code_dict.get(code, '')
             ## EXTENSION DEL CONTRATO
-            contract_extensions_to_database = list()
             for contract_extension in procurement_project.iterfind('ContractExtension'):
                 ext_metadata = contract_extensions_schema.copy()
                 ext_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -254,8 +207,7 @@ def process_xml_atom(root, manager):
                 validity_period = contract_extension.find('OptionValidityPeriod/Description')
                 if validity_period is not None:
                     ext_metadata['periodo_validez'] = validity_period.text
-                if not is_stored('contract_extensions', ext_metadata, bid_metadata['storage_mode'], stored_data):
-                    contract_extensions_to_database.append(ext_metadata)
+                contract_extensions_to_database.append(ext_metadata)
             ## LUGAR DE EJECUCION
             location = procurement_project.find('RealizedLocation')
             if location is not None:
@@ -283,7 +235,7 @@ def process_xml_atom(root, manager):
                             bid_metadata['pais_ejecucion'] = code_dict.get(code, code)
         # DOCUMENTOS: Van en otra base de datos (1 licitación - N documentos)
         ## PLIEGO ADMINISTRATIVO (0-1)
-        docs_to_database = list()
+
         doc_element = status.find('LegalDocumentReference')
         if doc_element is not None:
             doc_metadata = doc_schema.copy()
@@ -294,8 +246,7 @@ def process_xml_atom(root, manager):
             if doc_hash is not None:
                 doc_metadata['doc_hash'] = doc_hash.text
             doc_metadata['doc_type'] = 'administrativo'
-            if not is_stored('docs', doc_metadata, bid_metadata['storage_mode'], stored_data):
-                docs_to_database.append(doc_metadata)
+            docs_to_database.append(doc_metadata)
         ## PLIEGO TECNICO (0-1)
         doc_element = status.find('TechnicalDocumentReference')
         if doc_element is not None:
@@ -306,8 +257,7 @@ def process_xml_atom(root, manager):
             if doc_element.find('Attachment/ExternalReference/DocumentHash') is not None:
                 doc_metadata['doc_hash'] = doc_element.find('Attachment/ExternalReference/DocumentHash').text
             doc_metadata['doc_type'] = 'tecnico'
-            if not is_stored('docs', doc_metadata, bid_metadata['storage_mode'], stored_data):
-                docs_to_database.append(doc_metadata)
+            docs_to_database.append(doc_metadata)
         ## OTROS DOCUMENTOS (0-N)
         for doc_element in status.iterfind('AdditionalDocumentReference'):
             doc_metadata = doc_schema.copy()
@@ -317,11 +267,9 @@ def process_xml_atom(root, manager):
             if doc_element.find('Attachment/ExternalReference/DocumentHash') is not None:
                 doc_metadata['doc_hash'] = doc_element.find('Attachment/ExternalReference/DocumentHash').text
             doc_metadata['doc_type'] = 'otro'
-            if not is_stored('docs', doc_metadata, bid_metadata['storage_mode'], stored_data):
-                docs_to_database.append(doc_metadata)
+            docs_to_database.append(doc_metadata)
 
         # LOTES (1)
-        lots_to_database = list()
         for lot_element in status.iterfind('ProcurementProjectLot'):
             lot_metadata = lot_schema.copy()
             lot_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -340,7 +288,7 @@ def process_xml_atom(root, manager):
                     if amount_w_tax is not None:
                         lot_metadata['presupuesto_base_lote_total'] = float(amount_w_tax.text)
             ## CODIGOS CPV DE LOTE
-            lot_cpvs_to_database = list()
+
             for code in lote_object_element.iterfind('RequiredCommodityClassification'):
                 cpv_metadata = lot_cpv_schema.copy()
                 cpv_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -351,10 +299,8 @@ def process_xml_atom(root, manager):
                 if url_cpv_code:
                     code_dict = code_mapper(url_cpv_code, gc_dict)
                     cpv_metadata['code_description'] = code_dict.get(cpv_code, '')
-                if not is_stored('lot_cpv_codes', cpv_metadata, bid_metadata['storage_mode'], stored_data):
-                    lot_cpvs_to_database.append(cpv_metadata)
-            if not is_stored('lots', lot_metadata, bid_metadata['storage_mode'], stored_data):
-                lots_to_database.append(lot_metadata)
+                lot_cpvs_to_database.append(cpv_metadata)
+            lots_to_database.append(lot_metadata)
 
         # TENDERING PROCESS
         tendering_process = status.find('TenderingProcess')
@@ -409,7 +355,6 @@ def process_xml_atom(root, manager):
                 if end_date is not None and end_time is not None:
                     bid_metadata['plazo_presentacion'] = f"{end_date.text.replace('Z', '')} {end_time.text}"
             ## EVENTOS
-            events_to_database = list()
             for evento_element in tendering_process.iterfind('OpenTenderEvent'):
                 event_metadata = event_schema.copy()
                 event_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -453,8 +398,7 @@ def process_xml_atom(root, manager):
                             if url_country_code:
                                 code_dict = code_mapper(url_country_code, gc_dict)
                                 event_metadata['pais'] = code_dict.get(country_code, country_code)
-                if not is_stored('events', event_metadata, bid_metadata['storage_mode'], stored_data):
-                    events_to_database.append(event_metadata)
+                events_to_database.append(event_metadata)
 
             ## LIMITACION NUMERO LICITADORES
             limitation_element = tendering_process.find('EconomicOperatorShortList')
@@ -797,7 +741,6 @@ def process_xml_atom(root, manager):
             if funding_program_text:
                 bid_metadata['programa_financiacion'] = funding_program_text.strip()
             ## GARANTIAS REQUERIDAS
-            guarantees_to_database = list()
             for guarantee_element in tendering_terms.iterfind('RequiredFinancialGuarantee'):
                 guarantee_metadata = required_guarantee_schema.copy()
                 guarantee_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -814,8 +757,7 @@ def process_xml_atom(root, manager):
                 guarantee_rate = guarantee_element.find('AmountRate')
                 if guarantee_rate is not None:
                     guarantee_metadata['porcentaje_garantia'] = guarantee_rate.text
-                if not is_stored('required_guarantees', guarantee_metadata, bid_metadata['storage_mode'], stored_data):
-                    guarantees_to_database.append(guarantee_metadata)
+                guarantees_to_database.append(guarantee_metadata)
 
             ## REQUISITOS DE PARTICIPACION
             requisites_element = tendering_terms.find('TendererQualificationRequest')
@@ -829,7 +771,6 @@ def process_xml_atom(root, manager):
                 if description is not None:
                     bid_metadata['descripcion_requisitos_participacion'] = description.text
                 ### CLASIFICACION EMPRESARIAL
-                bussiness_class_to_database = list()
                 for required_bussiness_class in requisites_element.iterfind(
                         'RequiredBusinessClassificationScheme/ClassificationCategory'):
                     class_metadata = required_business_classification_schema.copy()
@@ -840,12 +781,9 @@ def process_xml_atom(root, manager):
                     code = required_bussiness_class.find('CodeValue')
                     if code is not None:
                         class_metadata['codigo_clasificacion_empresarial'] = code.text
-                    if not is_stored('required_business_classifications', class_metadata, bid_metadata['storage_mode'],
-                                     stored_data):
-                        bussiness_class_to_database.append(class_metadata)
+                    bussiness_class_to_database.append(class_metadata)
 
                 ### CONDICIONES DE ADMISION
-                admission_conditions_to_database = list()
                 for condition in requisites_element.iterfind('SpecificTendererRequirement/RequirementTypeCode'):
                     cond_metadata = admission_condition_schema.copy()
                     cond_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -854,11 +792,9 @@ def process_xml_atom(root, manager):
                     if url_code:
                         code_dict = code_mapper(url_code, gc_dict)
                         cond_metadata['condicion'] = code_dict.get(code, code)
-                    if not is_stored('admission_conditions', cond_metadata, bid_metadata['storage_mode'], stored_data):
-                        admission_conditions_to_database.append(cond_metadata)
+                    admission_conditions_to_database.append(cond_metadata)
 
                 ### CRITERIO DE EVALUACION TECNICA
-                ev_criteria_to_database = list()
                 for tech_criteria in requisites_element.iterfind('TechnicalEvaluationCriteria'):
                     crit_metadata = evaluation_criterion_schema.copy()
                     crit_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -873,8 +809,7 @@ def process_xml_atom(root, manager):
                     criteria_description = tech_criteria.find('Description')
                     if criteria_description is not None:
                         crit_metadata['descripcion_criterio'] = criteria_description.text
-                    if not is_stored('evaluation_criteria', crit_metadata, bid_metadata['storage_mode'], stored_data):
-                        ev_criteria_to_database.append(crit_metadata)
+                    ev_criteria_to_database.append(crit_metadata)
                 ### CRITERIO DE EVALUACION ECONOMICO-FINANCIERA
                 for finantial_criteria in requisites_element.iterfind('FinancialEvaluationCriteria'):
                     crit_metadata = evaluation_criterion_schema.copy()
@@ -890,8 +825,7 @@ def process_xml_atom(root, manager):
                     criteria_description = finantial_criteria.find('Description')
                     if criteria_description is not None:
                         crit_metadata['descripcion_criterio'] = criteria_description.text
-                    if not is_stored('evaluation_criteria', crit_metadata, bid_metadata['storage_mode'], stored_data):
-                        ev_criteria_to_database.append(crit_metadata)
+                    ev_criteria_to_database.append(crit_metadata)
 
             ## SUBCONTRATACION PERMITIDA
             subcontract_terms = tendering_terms.find('AllowedSubcontractTerms')
@@ -919,7 +853,6 @@ def process_xml_atom(root, manager):
                 if envelope_description is not None:
                     bid_metadata['descripcion_preparacion_oferta'] = envelope_description.text
             ## CONDICIONES ADJUDICACION
-            awarding_conditions_to_database = list()
             for awarding_terms in tendering_terms.iterfind('AwardingTerms/AwardingCriteria'):
                 condition_metadata = awarding_condition_schema.copy()
                 condition_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -929,11 +862,9 @@ def process_xml_atom(root, manager):
                 weight = awarding_terms.find('WeightNumeric')
                 if weight is not None:
                     condition_metadata['ponderacion_adjudicacion'] = weight.text
-                if not is_stored('awarding_conditions', condition_metadata, bid_metadata['storage_mode'], stored_data):
-                    awarding_conditions_to_database.append(condition_metadata)
+                awarding_conditions_to_database.append(condition_metadata)
 
         # RESULTADO PROCEDIMIENTO
-        winners_to_database = list()
         for result in status.iterfind('TenderResult'):
             winner_metadata = winner_schema.copy()
             winner_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -970,7 +901,7 @@ def process_xml_atom(root, manager):
                 ### ID LOTE
                 lot_id = awarded_tendered_project.find('ProcurementProjectLotID')
                 if lot_id is not None:
-                    winner_metadata['id_lote'] = lot_id.text
+                    winner_metadata['id_lote'] = int(lot_id.text)
             ## NUMERO DE PARTICIPANTES
             num_licitadores = result.find('ReceivedTenderQuantity')
             if num_licitadores is not None:
@@ -982,7 +913,7 @@ def process_xml_atom(root, manager):
             ## FECHA
             date = result.find('AwardDate')
             if date is not None:
-                winner_metadata['fecha_adjudicacion'] = date.text
+                winner_metadata['fecha_adjudicacion'] = date.text.replace('Z', '')
             ## OFERTAS RECIBIDAS
             highest_offer = result.find('HigherTenderAmount')
             if highest_offer is not None:
@@ -1000,7 +931,7 @@ def process_xml_atom(root, manager):
                 ### FECHA FORMALIZACION
                 issue_date = contract_info.find('IssueDate')
                 if issue_date is not None:
-                    winner_metadata['fecha_formalizacion'] = issue_date.text
+                    winner_metadata['fecha_formalizacion'] = issue_date.text.replace('Z', '')
             ## FECHA DE ENTRAGA EN VIGOR DEL CONTRATO
             entrada_vigor = result.find('StartDate')
             if entrada_vigor is not None:
@@ -1014,8 +945,7 @@ def process_xml_atom(root, manager):
                 subcontract_description = subcontract_terms.find('Description')
                 if subcontract_description is not None:
                     winner_metadata['objeto_subcontratacion'] = subcontract_description.text
-            if not is_stored('winners', winner_metadata, bid_metadata['storage_mode'], stored_data):
-                winners_to_database.append(winner_metadata)
+            winners_to_database.append(winner_metadata)
         # ORGANO DE CONTRATACION
         org_metadata = org_schema.copy()
         located_contracting_party = status.find('LocatedContractingParty')
@@ -1081,7 +1011,6 @@ def process_xml_atom(root, manager):
             bid_metadata['organo_de_contratacion'] = lowest_level
 
         # MODIFICACIONES DE CONTRATO
-        mods_to_database = list()
         for mod in status.iterfind('ContractModification'):
             mod_metadata = contract_mod_schema.copy()
             mod_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -1109,11 +1038,9 @@ def process_xml_atom(root, manager):
             duration = mod.find('FinalDurationMeasure')
             if duration is not None:
                 mod_metadata['duracion'] = f'{duration.text} {duration.attrib["unitCode"]}'
-            if not is_stored('contract_mods', mod_metadata, bid_metadata['storage_mode'], stored_data):
-                mods_to_database.append(mod_metadata)
+            mods_to_database.append(mod_metadata)
 
         # MEDIOS DE PUBLICACION
-        publications_to_database = list()
         for medium in status.iterfind('ValidNoticeInfo'):
             medium_metadata = publication_schema.copy()
             medium_metadata['bid_id'] = bid_metadata['bid_uri']
@@ -1133,8 +1060,7 @@ def process_xml_atom(root, manager):
                 for pub_date in pub_status.iterfind('AdditionalPublicationDocumentReference/IssueDate'):
                     copy2_pub_metadata = copy_pub_metadata.copy()
                     copy2_pub_metadata['fecha_publicacion'] = pub_date.text
-                    if not is_stored('publications', copy2_pub_metadata, bid_metadata['storage_mode'], stored_data):
-                        publications_to_database.append(copy2_pub_metadata)
+                    publications_to_database.append(copy2_pub_metadata)
         bids_to_database.append(bid_metadata)
     if mods_to_database:
         item_to_database(mods_to_database, 'contract_mods')
@@ -1172,7 +1098,7 @@ def process_xml_atom(root, manager):
         if data:
             stored_data = data
         # else:
-        #     stored_data = update_data()
+        #     stored_data = get_all_tables_info()
     manager[0] = stored_data
     manager[1] = gc_dict
 

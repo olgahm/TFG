@@ -9,6 +9,9 @@ from database_generator.info_storage import item_to_database
 from config import get_db_connection
 from config import text_logger
 from bs4 import BeautifulSoup
+from langdetect import detect
+
+import nltk
 
 
 def store_document_text(url, bid_id, doc_id, hash):
@@ -38,6 +41,8 @@ def store_document_text(url, bid_id, doc_id, hash):
                 else:
                     text_logger.debug(f'Unprocessed url {url}')
                 return
+        else:
+            print('study this doc')
         if 'zip' in doc_format:
             file_counter = 0
             with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
@@ -50,7 +55,7 @@ def store_document_text(url, bid_id, doc_id, hash):
                                 text, ocr = get_pdf_text(to_parse)
                                 if text:
                                     file_counter += 1
-                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'pliego_tecnico': text,
+                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'texto_original': text,
                                             'storage_mode': 'new', 'ocr': ocr}
                                     item_to_database([item], 'texts')
                                 else:
@@ -70,7 +75,7 @@ def store_document_text(url, bid_id, doc_id, hash):
                                 text, ocr = get_pdf_text(to_parse)
                                 if text:
                                     file_counter += 1
-                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'pliego_tecnico': text,
+                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'texto_original': text,
                                             'storage_mode': 'new', 'ocr': ocr}
                                     item_to_database([item], 'texts')
                                 else:
@@ -83,7 +88,7 @@ def store_document_text(url, bid_id, doc_id, hash):
         return
     text, ocr = get_pdf_text(to_parse)
     if text:
-        item = {'bid_id': bid_id, 'pliego_tecnico': text, 'storage_mode': 'new', 'ocr': ocr}
+        item = {'bid_id': bid_id, 'texto_original': text, 'storage_mode': 'new', 'ocr': ocr}
         item_to_database([item], 'texts')
     else:
         print(f'We may need and OCR {url}')
@@ -103,7 +108,11 @@ def get_pdf_text(buffer):
         ocr = True
         if parsed_data['content'] is None:
             return '', False
+
     text = parsed_data['content']
+    lg = detect(text)
+    if lg != 'es':
+        return '', False
     final_text = re.sub("[	 \n\s]+", ' ', text).strip()
     final_text = final_text.replace('\\\\', '\\')
     return final_text, ocr

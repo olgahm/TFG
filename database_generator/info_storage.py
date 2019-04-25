@@ -9,6 +9,8 @@ import traceback
 from config import get_db_connection
 import re
 from unidecode import unidecode
+import itertools
+import sys
 
 DB_GEN_PATH = os.path.dirname(os.path.abspath(__file__))
 stored_pk = list()
@@ -33,15 +35,20 @@ def get_all_tables_info():
     db_info = dict()
     for table in tables:
         try:
-            table_df = get_db_connection().readDBtable(tablename=table, selectOptions='*')
-            table_dict = dict()
-            fields = list(table_df)
-            for field in fields:
-                table_dict[field] = table_df[field].tolist()
+            table_dict = get_data_from_table(table)
             db_info[table] = table_dict
         except:
             continue
     return db_info
+
+
+def get_data_from_table(table):
+    table_df = get_db_connection().readDBtable(tablename=table, selectOptions='*')
+    table_dict = dict()
+    fields = list(table_df)
+    for field in fields:
+        table_dict[field] = table_df[field].tolist()
+    return table_dict
 
 
 def item_to_database(items, db_table, recent_data=None):
@@ -68,18 +75,36 @@ def item_to_database(items, db_table, recent_data=None):
                 final_to_insert.append(item)
                 queued.append(item[pk].lower().strip())
             elif db_table == 'bids':
-                # If the item is considered new, pass to update list
+                # If the item is considered new but in queue, pass to update list
                 to_update.append(item)
         if item.get('storage_mode', ''):
             del item['storage_mode']
     if final_to_insert:
         to_insert = final_to_insert
 
-    # pk = get_primary_key(db_table)
-    # df = DataFrame(item)
-    # print(df)
-    # for field in item:
-    #     processed_item[field] = [item[field]]
+    # Check if bid queued to be updated are more recent
+    final_to_update = list()
+    if to_update and db_table == 'bids':
+        unique_bid_ids = list(dict.fromkeys([item[pk] for item in to_update]))
+        for bid in unique_bid_ids:
+            null_date_indexes = [index for index, item in enumerate(to_update) if
+                                 item[pk] == bid and to_update[index]['last_updated'] is None]
+            for index in null_date_indexes:
+                final_to_update.append(to_update[index])
+            date_indexes = [index for index, item in enumerate(to_update) if
+                            item[pk] == bid and to_update[index]['last_updated'] is not None]
+            dates = [datetime.strptime(to_update[index]['last_updated'], '%Y-%m-%d %H:%M:%S') for index in date_indexes]
+            if dates:
+                if len(dates) > 1:
+                    maximum_date = max(date for date in dates)
+                    maximum_date = maximum_date.strftime('%Y-%m-%d %H:%M:%S')
+                    max_date_index = date_indexes[dates.index(maximum_date)]
+                    print('dates')
+                else:
+                    max_date_index = date_indexes[0]
+                # Check if there is a new bid with with id and compare times
+                if any(item[pk]==bid for item in to_insert):
+                    print('check date')
     try:
         if to_insert:
             rows = list()
@@ -98,7 +123,8 @@ def item_to_database(items, db_table, recent_data=None):
                 stored_data = recent_data
             else:
                 db_logger.debug(f'Duplicate entry in table {db_table}. Reloading stored data in memory...')
-                stored_data = update_data() # TODO: try not using this every time. Index primary keys and ask for the
+                stored_data = {'bids': get_data_from_table('bids'), 'orgs': get_data_from_table(
+                    'orgs')}  # TODO: try not using this every time. Index primary keys and ask for  # the  #  #  #
                 # remaining info if needed
             # dup = re.search("Duplicate entry '(.*)' for key 'PRIMARY'", str(e)).group(1)
             # Get duplicated element
@@ -159,19 +185,6 @@ def get_mandatory_keys(table):
     with open(os.path.join(DB_GEN_PATH, 'DB_tables.json')) as f:
         table_info = json.loads(f.read())
     return table_info[table]['fields']
-
-
-def update_data(data=None):
-    # Meter las cosas guardadas a mano sin consultar en la base de datos para reducir utilizacion del disco
-    if data is not None:
-        db_stored_info = data
-    else:
-        db_stored_info = get_all_tables_info()
-    return db_stored_info
-
-
-def get_data_from_table(db_stored_info, table):
-    return db_stored_info[table]
 
 
 def is_deleted(bid_uri, bid_metadata, items_in_database):
@@ -267,54 +280,90 @@ def is_stored(table, item, storage_mode, items_in_database):
     stored_data = items_in_database[table]
     duplicated = False
     # Check if current item is related to a bid
-    if 'bid_id' in item:
-        # Since all tables have a bid_id, check if current item has a stored bid_id
-        if any(item['bid_id'] == stored_bid for stored_bid in stored_data['bid_id']):
-            rows = stored_data['bid_id'].count(item['bid_id'])
-            if rows > 1:
-                indexes = [index for index, value in enumerate(stored_data['bid_id']) if
-                           item['bid_id'] == stored_data['bid_id'][index]]
-            else:
-                indexes = [stored_data['bid_id'].index(item['bid_id'])]
-            this_item = [str(item[key]) for key in item if item[key] is not None]
-            for index in indexes:
-                stored_item = list()
-                for field in stored_data:
-                    if stored_data[field][index] is not None and str(stored_data[field][index]) != 'nan':
-                        stored_item.append(str(stored_data[field][index]))
-                # Check if there are more fields in the stored entry than current one
-                if len(stored_item) >= len(this_item):
-                    if len(stored_item) > len(this_item):
-                        duplicated = True
-                    elif sorted(stored_item) == sorted(this_item):
-                        duplicated = True
-                else:
-                    duplicated = False
+    if any(item['nombre'].lower().strip() == stored_org.lower().strip() for stored_org in stored_data['nombre']):
+        item['storage_mode'] = 'update'
+        stored_org_names = [stored_org.lower().strip() for stored_org in stored_data['nombre']]
+        index = stored_org_names.index(item['nombre'].lower().strip())
+        this_item = [str(item[key]).lower().strip() for key in item if item[key] is not None and key != 'storage_mode']
+        stored_item = list()
+        for field in stored_data:
+            if stored_data[field][index] is not None:
+                stored_item.append(str(stored_data[field][index]).lower().strip())
+        if len(stored_item) >= len(this_item):
+            if len(stored_item) > len(this_item):
+                db_logger.debug(f'Organization {item["nombre"]} already stored in database')
+                duplicated = True
+            elif sorted(stored_item) == sorted(this_item):
+                db_logger.debug(f'Organization {item["nombre"]} already stored in database')
+                duplicated = True
         else:
             duplicated = False
     else:
-        # if ')' in item['nombre']:
-        #     print('Nombre raro')
-        if any(item['nombre'].lower().strip() == stored_org.lower().strip() for stored_org in stored_data['nombre']):
-            item['storage_mode'] = 'update'
-            stored_org_names = [stored_org.lower().strip() for stored_org in stored_data['nombre']]
-            index = stored_org_names.index(item['nombre'].lower().strip())
-            this_item = [str(item[key]).lower().strip() for key in item if
-                         item[key] is not None and key != 'storage_mode']
-            stored_item = list()
-            for field in stored_data:
-                if stored_data[field][index] is not None:
-                    stored_item.append(str(stored_data[field][index]).lower().strip())
-            if len(stored_item) >= len(this_item):
-                if len(stored_item) > len(this_item):
-                    db_logger.debug(f'Organization {item["nombre"]} already stored in database')
-                    duplicated = True
-                elif sorted(stored_item) == sorted(this_item):
-                    db_logger.debug(f'Organization {item["nombre"]} already stored in database')
-                    duplicated = True
-            else:
-                duplicated = False
-        else:
-            item['storage_mode'] = 'new'
-            duplicated = False
+        item['storage_mode'] = 'new'
+        duplicated = False
     return duplicated
+
+
+def remove_duplicates():
+    """Function to remove duplicate rows from tables in database without primary key
+
+    :return:
+    """
+    table_names = get_all_table_names()
+    primary_keys = [get_primary_key(table) for table in table_names]
+    tables_w_dups = [table_names[index] for index, key in enumerate(primary_keys) if not key]
+    for table in tables_w_dups:
+        print(table)
+        stored_data = get_data_from_table(table)
+        stored_bid_ids = stored_data['bid_id']
+        unique_bid_ids = list(dict.fromkeys(stored_bid_ids))
+        columns = [field for field in stored_data]
+        to_insert = list()
+        deletion_cond = str()
+        for bid_id in unique_bid_ids:
+            rows_4_id = [index for index, value in enumerate(stored_bid_ids) if bid_id == stored_bid_ids[index]]
+            if len(rows_4_id) > 1:
+                values_2_compare = list()
+                for index in rows_4_id:
+                    values_2_compare.append([str(stored_data[field][index]) for field in stored_data])
+
+                seen = set()
+                distinct_rows = [x for x in values_2_compare if frozenset(x) not in seen and not seen.add(frozenset(x))]
+
+                # All rows have the same field order, so go one by one checking if the item has a longer match
+                copy_dis_rows = distinct_rows.copy()
+
+                for this_row in copy_dis_rows:
+                    for other_row in copy_dis_rows:
+                        if this_row == other_row:
+                            continue
+                        else:
+                            if set(this_row).issubset(other_row):
+                                print('Subset')
+
+                if len(values_2_compare) != len(distinct_rows):
+                    # for row in values_2_compare:
+                    #     pass
+                    try:
+                        # get_db_connection().insertInTable(table, columns, distinct_rows)  # TODO: Eliminar despues
+                        deletion_cond += f"bid_id='{bid_id}' OR "
+                        to_insert.append(distinct_rows)
+                    except BaseException as e:
+                        print(
+                            e)  # get_db_connection().deleteRowTables(table, f"bid_id='{bid_id}'")  #  #  #   #  #
+                        # get_db_connection().insertInTable(table, columns, distinct_rows)  # deletion_cond +=  #  #
+                        # f"bid_id='{bid_id}' OR "  # to_insert += distinct_rows
+        if to_insert:
+            get_db_connection().deleteRowTables(table, deletion_cond[:-3])
+            get_db_connection().insertInTable(table, columns, to_insert)
+
+
+def get_longest_item(item, distinct_items):
+    final_distict_items = list()
+    longer_match = True
+    for di in distinct_items:
+        if len(item) < len(di):
+            for value in item:
+                if value not in di:
+                    longer_match = False
+                    break
