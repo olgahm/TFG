@@ -3,11 +3,12 @@ import requests
 import re
 import iso8601
 import pytz
-from database_generator.info_storage import is_stored
-from database_generator.info_storage import get_all_tables_info
-from database_generator.info_storage import is_new_or_update
-from database_generator.info_storage import is_deleted
-from database_generator.info_storage import item_to_database
+from database_generator.db_helpers import is_stored
+from database_generator.db_helpers import get_data_from_table
+from database_generator.db_helpers import get_db_bid_info
+from database_generator.db_helpers import is_new_or_update
+from database_generator.db_helpers import is_deleted
+from database_generator.db_helpers import item_to_database
 from config import db_logger
 from unidecode import unidecode
 
@@ -165,10 +166,10 @@ def process_xml_atom(root, manager):
                     bid_metadata['duracion'] = f'{duration.text} {duration.attrib["unitCode"]}'
                 start_date = planned_period.find('StartDate')
                 if start_date is not None:
-                    bid_metadata['fecha_inicio'] = start_date.text
+                    bid_metadata['fecha_inicio'] = start_date.text.replace('Z', '')
                 end_date = planned_period.find('EndDate')
                 if end_date is not None:
-                    bid_metadata['fecha_fin'] = end_date.text
+                    bid_metadata['fecha_fin'] = end_date.text.replace('Z', '')
             ## CODIGO CPV (0-N)
             for code in procurement_project.iterfind('RequiredCommodityClassification'):
                 cpv_metadata = bid_cpv_schema.copy()
@@ -1092,13 +1093,13 @@ def process_xml_atom(root, manager):
         item_to_database(publications_to_database, 'publications')
     data = None
     if orgs_to_database:
+        db_logger.debug('Storing or updating organizations in database...')
         data = item_to_database(orgs_to_database, 'orgs')
     if bids_to_database:
+        db_logger.debug('Storing or updating bids in database...')
         data = item_to_database(bids_to_database, 'bids', data)
-        if data:
-            stored_data = data
-        # else:
-        #     stored_data = get_all_tables_info()
+        db_logger.debug('Reloading bid and organization information from database...')
+        stored_data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
     manager[0] = stored_data
     manager[1] = gc_dict
 

@@ -1,7 +1,7 @@
 from gensim import corpora
 from gensim import models
-from toppic_modelling.text_preprocessor import preprocess_corpus
-from toppic_modelling.text_preprocessor import join_long_docs
+from topic_model.text_preprocessor import preprocess_corpus
+from topic_model.text_preprocessor import join_long_docs
 from config import get_db_connection
 import os
 

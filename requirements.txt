@@ -11,3 +11,4 @@ nltk
 KafNafParserPy
 lxml
 rarfile
+textblob

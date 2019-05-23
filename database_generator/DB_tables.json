@@ -283,7 +283,7 @@
       "TEXT": [
         "bid_id",
         "texto_original",
-        "palabras_texto"
+        "tokens"
       ],
       "BOOLEAN": [
         "ocr"

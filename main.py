@@ -16,10 +16,10 @@ from config import get_db_connection
 from database_generator.bid_crawler import get_urls_to_crawl
 from database_generator.bid_crawler import process_url
 from database_generator.doc_parser import store_document_text
-from database_generator.info_storage import get_all_table_names
-from database_generator.info_storage import get_mandatory_keys
-from database_generator.info_storage import get_primary_key
-from toppic_modelling.model_generator import model_generator
+from database_generator.db_helpers import get_all_table_names
+from database_generator.db_helpers import get_mandatory_keys
+from database_generator.db_helpers import get_primary_key
+from topic_model.model_generator import model_generator
 
 actions = {'1': 'update_database()', '2': 'extract_text_from_docs()', '3': 'reconstruct_database()',
            '4': 'generate_model()', '0': 'exit()'}
@@ -70,13 +70,13 @@ def extract_text_from_docs():
     for index in range(len(urls)):
         if bid_ids[index] not in stored_bids:
             tech_docs.append([urls[index], bid_ids[index], doc_ids[index], hashes[index]])
-    p = Pool(1)
+    p = Pool(2)
     p.starmap(store_document_text, tech_docs)
-    p.join()
-    p.close()
+    print('Finished parsing docs!')
 
 
 def reconstruct_database():
+    
     mandatory_fields = list()
     primary_keys = list()
     tables = get_all_table_names()
