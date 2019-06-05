@@ -13,8 +13,8 @@ import sys
 import re
 
 from config import get_db_connection
-from database_generator.bid_crawler import get_urls_to_crawl
-from database_generator.bid_crawler import process_url
+from database_generator.pcsp_crawler import get_urls_to_crawl
+from database_generator.pcsp_crawler import process_url
 from database_generator.doc_parser import store_document_text
 from database_generator.db_helpers import get_all_table_names
 from database_generator.db_helpers import get_mandatory_keys
@@ -36,7 +36,6 @@ def start_main_menu():
         print("4. Generate topic model")
         print("\n0. Exit")
         option = input(" >>  ")
-        # option = "1"
         parse_option(option)
     return
 

@@ -1,0 +1,304 @@
+{
+  "db_config": {
+    "db_name": "contratacion_del_estado",
+    "db_server": "localhost",
+    "db_user": "root",
+    "db_pass": "23091996",
+    "db_port": null
+  },
+  "db_table_templates": {
+    "bids": {
+      "primary_key": "id",
+      "fields": {
+        "AUTO_INCREMENT": ["id"],
+        "TEXT": [
+          "bid_uri",
+          "title",
+          "summary",
+          "link",
+          "deleted_at_offset",
+          "last_updated_offset",
+          "bid_status",
+          "id_expediente",
+          "duracion",
+          "tipo_contrato",
+          "subtipo_contrato",
+          "comunidad_ejecucion",
+          "ciudad_ejecucion",
+          "zona_postal_lugar_ejecucion",
+          "pais_ejecucion",
+          "tipo_procedimiento",
+          "sistema_contratacion",
+          "tipo_tramitacion",
+          "presentacion_oferta",
+          "idioma",
+          "organo_de_contratacion",
+          "proveedor_pliegos",
+          "receptor_ofertas",
+          "deadline_descripcion",
+          "formula_revision_precio",
+          "programa_financiacion",
+          "titulo_habilitante",
+          "descripcion_requisitos_participacion",
+          "clasificacion_empresarial_solicitada",
+          "codigo_clasificacion_empresarial_solicitada",
+          "condiciones_admision",
+          "objeto_subcontratacion",
+          "id_sobre",
+          "tipo_documento_sobre",
+          "descripcion_preparacion_oferta",
+          "condiciones_adjudicacion",
+          "criterio_limitacion_numero_candidatos",
+          "codigo_justificacion_proceso_extraordinario",
+          "descripcion_justificacion_proceso_extraordinario"
+        ],
+        "DATETIME": [
+          "deleted_at",
+          "last_updated",
+          "plazo_pliegos",
+          "plazo_presentacion"
+        ],
+        "DOUBLE": [
+          "valor_estimado",
+          "presupuesto_base_sin_impuestos",
+          "presupuesto_base_total",
+          "porcentaje_maximo_subcontratacion",
+          "ponderacion_adjudicacion"
+        ],
+        "DATE": [
+          "fecha_inicio",
+          "fecha_fin"
+        ],
+        "BOOLEAN": [
+          "curriculum_requerido",
+          "admision_variantes"
+        ],
+        "INTEGER": [
+          "candidatos_esperados",
+          "candidatos_maximos",
+          "candidatos_minimos"
+        ]
+      }
+    },
+    "docs": {
+      "primary_key": "id",
+      "fields": {
+        "AUTO_INCREMENT": ["id"],
+        "TEXT": [
+          "name",
+          "url",
+          "type",
+          "hash",
+          "lang",
+          "ocr"
+        ]
+      }
+    },
+    "orgs": {
+      "primary_key": "nombre",
+      "fields": {
+        "TEXT": [
+          "nombre",
+          "tipo_organismo",
+          "uri",
+          "id",
+          "direccion",
+          "cp",
+          "ciudad",
+          "pais",
+          "nombre_contacto",
+          "telefono_contacto",
+          "fax_contacto",
+          "email_contacto",
+          "razon_social"
+        ]
+      }
+    },
+    "events": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "tipo",
+          "id_evento",
+          "descripcion",
+          "lugar",
+          "direccion",
+          "cp",
+          "ciudad",
+          "pais"
+        ],
+        "DATETIME": [
+          "fecha"
+        ]
+      }
+    },
+    "winners": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "resultado",
+          "adjudicatario",
+          "id_contrato",
+          "objeto_subcontratacion",
+          "id_lote",
+          "motivacion"
+        ],
+        "DOUBLE": [
+          "importe_sin_impuestos",
+          "importe_con_impuestos",
+          "maxima_oferta_recibida",
+          "minima_oferta_recibida",
+          "porcentaje_subcontratacion"
+        ],
+        "INTEGER": [
+          "numero_participantes"
+        ],
+        "DATE": [
+          "fecha_adjudicacion",
+          "fecha_formalizacion",
+          "fecha_entrada_en_vigor"
+        ]
+      }
+    },
+    "contract_mods": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "id_contrato",
+          "id_modificacion",
+          "plazo_modificacion",
+          "duracion"
+        ],
+        "DOUBLE": [
+          "importe_sin_impuestos",
+          "importe_sin_impuestos_tras_mod"
+        ]
+      }
+    },
+    "publications": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "tipo_anuncio",
+          "medio_publicacion"
+        ],
+        "DATE": [
+          "fecha_publicacion"
+        ]
+      }
+    },
+    "lots": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "id_lote",
+          "objeto_lote"
+        ],
+        "DOUBLE": [
+          "presupuesto_base_lote_sin_impuestos",
+          "presupuesto_base_lote_total"
+        ]
+      }
+    },
+    "bid_cpv_codes": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "code",
+          "code_description"
+        ]
+      }
+    },
+    "lot_cpv_codes": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "id_lote",
+          "code",
+          "code_description"
+        ]
+      }
+    },
+    "awarding_conditions": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "criterio_adjudicacion",
+          "ponderacion_adjudicacion"
+        ]
+      }
+    },
+    "admission_conditions": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "condicion"
+        ]
+      }
+    },
+    "contract_extensions": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "opcion",
+          "periodo_validez"
+        ]
+      }
+    },
+    "required_guarantees": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "tipo_garantia",
+          "importe_garantia",
+          "porcentaje_garantia"
+        ]
+      }
+    },
+    "evaluation_criteria": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "codigo_criterio",
+          "descripcion_criterio",
+          "tipo_criterio"
+        ]
+      }
+    },
+    "required_business_classifications": {
+      "primary_key": null,
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "codigo_clasificacion_empresarial",
+          "clasificacion_empresarial"
+        ]
+      }
+    },
+    "texts": {
+      "primary_key": "bid_id",
+      "fields": {
+        "TEXT": [
+          "bid_id",
+          "texto_original",
+          "tokens"
+        ],
+        "BOOLEAN": [
+          "ocr"
+        ]
+      }
+    }
+  }
+}

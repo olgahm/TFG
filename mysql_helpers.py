@@ -25,7 +25,7 @@ class BaseDMsql(object):
     Data manager base class.
     """
 
-    def __init__(self, db_name, db_connector, path2db=None, db_server=None, db_user=None, db_password=None,
+    def __init__(self, db_name, db_connector, db_server=None, db_user=None, db_password=None,
                  db_port=None):
         """
         Initializes a DataManager object
@@ -33,7 +33,6 @@ class BaseDMsql(object):
         Args:
             db_name      :Name of the DB
             db_connector :Connector. Available options are mysql or sqlite
-            path2db :Path to the project folder (sqlite only)
             db_server    :Server (mysql only)
             db_user      :User (mysql only)
             db_password  :Password (mysql only)
@@ -41,7 +40,6 @@ class BaseDMsql(object):
         """
 
         # Store paths to the main project folders and files
-        self._path2db = copy.copy(path2db)
         self.dbname = db_name
         self.connector = db_connector
         self.server = db_server

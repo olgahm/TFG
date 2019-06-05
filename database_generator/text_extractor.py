@@ -1,26 +1,33 @@
 from io import BytesIO
+import json
+import logging
 import re
-import requests
-from tika import parser
-import zipfile
-import rarfile
+import sys
 
-from database_generator.db_helpers import item_to_database
-from config import get_db_connection
-from config import text_logger
 from bs4 import BeautifulSoup
 from textblob import TextBlob
-import json
-
-import nltk
-import sys
-from config import split_array
+from tika import parser
 from unidecode import unidecode
+import nltk
+import rarfile
+import requests
+import zipfile
 
+from mysql_helpers import BaseDMsql
+from config import get_db_connection
+from config import split_array
+from setup_logger import text_extractor_logger as logger
+from database_generator.db_helpers import item_to_database
+
+
+def get_doc_format(url):
+    response = requests.get(url)
+    content = response.content
+    content_type = response.headers['Content-Type']
 
 def store_document_text(url, bid_id, doc_id, hash):
     doc_format = doc_id.split('.')[-1].lower()
-    text_logger.debug(f'Processing {doc_format} document')
+    logger.debug(f'Processing {doc_format} document')
     doc_formats = ['pdf', 'doc', 'docx', 'zip', 'rar', 'rtf', 'html', 'htm']
     non_parsing_doc_formats = ['dwg', 'bc3']
     if doc_format in doc_formats:
@@ -39,12 +46,12 @@ def store_document_text(url, bid_id, doc_id, hash):
                 to_parse = response.content
             else:
                 if 'Documento no accesible' in response.content.decode('utf8'):
-                    text_logger.debug(f'Document in {url} not available. Deleting entry in database...')
+                    logger.debug(f'Document in {url} not available. Deleting entry in database...')
                     get_db_connection().deleteRowTables('docs', f"doc_url='{url}' and doc_type='tecnico'")
                 elif 'htm' in doc_format:
-                    text_logger.debug(f'Study this {doc_format} url: {url}')
+                    logger.debug(f'Study this {doc_format} url: {url}')
                 else:
-                    text_logger.debug(f'Unprocessed url {url}')
+                    logger.debug(f'Unprocessed url {url}')
                 return
         else:
             print(f'study this doc {url}')
@@ -90,7 +97,7 @@ def store_document_text(url, bid_id, doc_id, hash):
                                 else:
                                     print(f'We may need and OCR {url}')
                         elif rarfile_doc_format.lower() not in non_parsing_doc_formats:
-                             print(f'Unstudied format inside rar {rarfile_doc_format}')
+                            print(f'Unstudied format inside rar {rarfile_doc_format}')
             return
     else:
         print(f'{doc_format}: {url}')
@@ -99,7 +106,6 @@ def store_document_text(url, bid_id, doc_id, hash):
     if text:
         item = {'bid_id': bid_id, 'texto_original': text, 'storage_mode': 'new', 'ocr': ocr}
         item_to_database([item], 'texts')
-
 
 def get_pdf_text(buffer, url):
     while True:
@@ -131,7 +137,6 @@ def get_pdf_text(buffer, url):
     #     pos_and_lemmatize(text)
     return text, ocr
 
-
 def remove_punctuation(raw_text):
     """Process raw text to perform a first clean to improve language detection in later steps
 
@@ -144,15 +149,16 @@ def remove_punctuation(raw_text):
         print('Error tokenizing')
     return ' '.join(tokens)
 
-
 def pos_and_lemmatize(text):
     tokens = text.split()
-    split_tokens = split_array(tokens, 150) # Split text in chunks of 150 words so librairy can lemmatize the whole text
+    split_tokens = split_array(tokens,
+                               150)  # Split text in chunks of 150 words so librairy can lemmatize the whole text
     lemmatized_text = str()
     for chunk in split_tokens:
         chunk = ' '.join(chunk).lower()
         json_request = {"filter": ["NOUN", "ADJECTIVE", "VERB", "ADVERB"], "multigrams": True, "references": False,
                         "text": chunk}
-        token_info = requests.post('http://localhost:7777/es/annotations', json=json_request).content.decode('utf-8')
+        token_info = requests.post('http://localhost:7777/es/annotations', json=json_request).content.decode(
+            'utf-8')
         token_info = json.loads(token_info)['annotatedText']
         print('stop')
