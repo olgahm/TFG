@@ -14,6 +14,10 @@ from database_generator.atom_parser import process_xml_atom
 from database_generator.db_helpers import DB_GEN_PATH
 from database_generator.db_helpers import get_data_from_table
 from database_generator.db_helpers import get_db_bid_info
+
+from config import get_db_connection
+from config import db_logger
+from lxml import etree
 from datetime import datetime
 
 
@@ -38,17 +42,29 @@ def get_urls_to_crawl():
                     unprocessed_historic_files.append(url)
     else:
         unprocessed_historic_files = historic_atom_files
-    return sorted(unprocessed_historic_files, reverse=True) + current_atom_files
+    bids_pcsp = [url for url in unprocessed_historic_files if 'licitacionesPerfilesContratanteCompleto' in url]
+    bids_not_pcsp = [url for url in unprocessed_historic_files if 'PlataformasAgregadasSinMenores' in url]
+    minor_contracts = [url for url in unprocessed_historic_files if 'contratosMenoresPerfilesContratantes' in url]
+    cur_bids_pcsp = [url for url in current_atom_files if 'licitacionesPerfilesContratanteCompleto' in url]
+    cur_bids_not_pcsp = [url for url in current_atom_files if 'PlataformasAgregadasSinMenores' in url]
+    cur_minor_contracts = [url for url in current_atom_files if 'contratosMenoresPerfilesContratantes' in url]
+
+    bids_pcsp = cur_bids_pcsp + sorted(bids_pcsp, reverse=True)
+    bids_not_pcsp = cur_bids_not_pcsp + sorted(bids_not_pcsp, reverse=True)
+    minor_contracts = cur_minor_contracts + sorted(minor_contracts, reverse=True)
+    return bids_pcsp, bids_not_pcsp, minor_contracts
 
 
-def process_url(url):
-    if '.zip' in url:
-        zip_processing(url)
-    else:
-        atom_url_processing(url)
+def start_crawl(urls, lock):
+    db_conn = get_db_connection()
+    for url in urls:
+        if '.zip' in url:
+            parse_zip(url, db_conn, lock)
+        else:
+            parse_atom(url, db_conn)
 
 
-def zip_processing(url):
+def parse_zip(url, db_conn, lock):
     db_logger.debug(f'Start processing zip file {url}')
     response = requests.get(url)
     db_logger.debug('Loading bid and organization information from database...')
@@ -60,13 +76,15 @@ def zip_processing(url):
                 bids_xml = etree.parse(atom_file)
                 root = clean_elements(bids_xml.getroot())
                 pseudo_manager = [data, gc_info]
-                process_xml_atom(root, pseudo_manager)
+                process_xml_atom(root, db_conn, pseudo_manager)
     db_logger.debug(f'Finished processing zip file {url}')
+    lock.acquire()
     with open(os.path.join(DB_GEN_PATH, 'processed_zips.txt'), 'a') as f:
         f.write(f'{url}\n')
+    lock.release()
 
 
-def atom_url_processing(url, pseudo_manager=None):
+def parse_atom(url, db_conn, pseudo_manager=None):
     """Function to get bids for current month
 
     :param url: URL to scrape
@@ -88,7 +106,7 @@ def atom_url_processing(url, pseudo_manager=None):
     if pseudo_manager is None:
         db_logger.debug('Loading bid and organization information from database...')
         pseudo_manager = [{'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}, dict()]
-    process_xml_atom(root, pseudo_manager)
+    process_xml_atom(root, db_conn, pseudo_manager)
     if next_atom_date is not None:
         if int(next_atom_date.group(1)[4:6]) == this_month:
-            atom_url_processing(next_link, pseudo_manager)
+            parse_atom(next_link, db_conn, pseudo_manager)

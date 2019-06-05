@@ -4,8 +4,8 @@ from logging import FileHandler
 from logging import Formatter
 
 # TODO: Funciones para procesar un JSON de entrada
-db_connection = BaseDMsql(db_name='contratacion_del_estado', db_connector='mysql', db_server='localhost',
-                          db_user='root', db_password='23091996')
+# db_connection = BaseDMsql(db_name='contratacion_del_estado', db_connector='mysql', db_server='localhost',
+#                           db_user='root', db_password='23091996')
 
 # Init log file for database generation
 
@@ -30,7 +30,8 @@ def get_db_connection():
 
     :return: Database connection object
     """
-    return db_connection
+    return BaseDMsql(db_name='contratacion_del_estado', db_connector='mysql', db_server='localhost',
+                          db_user='root', db_password='23091996')
 
 
 def split_array(arr, size):

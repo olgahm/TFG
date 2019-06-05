@@ -81,7 +81,7 @@ def get_next_link(root):
     return next_link, root
 
 
-def process_xml_atom(root, manager):
+def process_xml_atom(root, db_conn, manager):
     stored_data = manager[0]
     gc_dict = manager[1]
     bids_to_database = list()
@@ -112,7 +112,7 @@ def process_xml_atom(root, manager):
     # Get information for deleted entries
     for deleted_entry in root.iterfind('deleted-entry'):
         id = deleted_entry.attrib['ref']
-        if is_in_db('bids', 'bid_uri', id):
+        if is_in_db('bids', 'bid_uri', id, db_conn):
             # Check if already deleted
 
             pass
@@ -128,7 +128,7 @@ def process_xml_atom(root, manager):
     for entry in root.iterfind('entry'):
         # Get mandatory info for bid
         id = entry.find('id').text  # Unique ID
-        if is_in_db('bids', 'bid_uri', id):
+        if is_in_db('bids', 'bid_uri', id, db_conn):
             # Check if older or newer than in db
 
             pass
