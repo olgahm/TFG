@@ -12,7 +12,10 @@ from database_generator.db_helpers import item_to_database
 from config import db_logger
 from unidecode import unidecode
 from mysql_helpers import BaseDMsql
+<<<<<<< HEAD
 from Document import Document
+=======
+>>>>>>> ca1ea4ba1acfd00b1ea4d02c8a2b2e0d074479fb
 
 bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "deleted_at_offset": None,
               "last_updated_offset": None, "bid_status": None, "id_expediente": None, "duracion": None,
@@ -61,9 +64,7 @@ evaluation_criterion_schema = {"bid_id": None, "codigo_criterio": None, "descrip
 required_business_classification_schema = {"bid_id": None, "codigo_clasificacion_empresarial": None,
                                            "clasificacion_empresarial": None}
 
-
 def is_in_db(table, ref_field, value, conn):
-
     df = conn.readDBtable(table, selectOptions='id', filterOptions=f"{ref_field}='{value}'")
     if df.empty:
         return False
@@ -111,7 +112,11 @@ def parse_atom_feed(root, db_conn, manager):
     # Get information for deleted entries
     for deleted_entry in root.iterfind('deleted-entry'):
         id = deleted_entry.attrib['ref']
+<<<<<<< HEAD
         if is_in_db('bids', 'bid_uri', id, db_conn):
+=======
+        if is_in_db('bids', 'bid_uri', id):
+>>>>>>> ca1ea4ba1acfd00b1ea4d02c8a2b2e0d074479fb
             # Check if already deleted
 
             pass
@@ -127,7 +132,11 @@ def parse_atom_feed(root, db_conn, manager):
     for entry in root.iterfind('entry'):
         # Get mandatory info for bid
         id = entry.find('id').text  # Unique ID
+<<<<<<< HEAD
         if is_in_db('bids', 'bid_uri', id, db_conn):
+=======
+        if is_in_db('bids', 'bid_uri', id):
+>>>>>>> ca1ea4ba1acfd00b1ea4d02c8a2b2e0d074479fb
             # Check if older or newer than in db
 
             pass
