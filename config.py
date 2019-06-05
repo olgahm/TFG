@@ -22,7 +22,7 @@ text_logger.setLevel(logging.DEBUG)
 text_logger_file_handler = FileHandler('log/text_extractor.log')
 text_logger_file_handler.setLevel(logging.DEBUG)
 text_logger_file_handler.setFormatter(Formatter(LOG_FORMAT))
-text_logger.addHandler(db_logger_file_handler)
+text_logger.addHandler(text_logger_file_handler)
 
 
 def get_db_connection():

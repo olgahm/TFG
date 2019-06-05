@@ -1,25 +1,27 @@
-from io import BytesIO
+import json
 import re
-import requests
-from tika import parser
-import zipfile
+import sys
+from io import BytesIO
+from time import sleep
+from unidecode import unidecode
+
+import nltk
 import rarfile
+import requests
+import zipfile
+from bs4 import BeautifulSoup
+from textblob import TextBlob
+from tika import parser
 
 from database_generator.db_helpers import item_to_database
 from config import get_db_connection
-from config import text_logger
-from bs4 import BeautifulSoup
-from textblob import TextBlob
-import json
-
-import nltk
-import sys
 from config import split_array
-from unidecode import unidecode
+from config import text_logger
 
 
 def store_document_text(url, bid_id, doc_id, hash):
     doc_format = doc_id.split('.')[-1].lower()
+    print(f'Processing {doc_format} document')
     text_logger.debug(f'Processing {doc_format} document')
     doc_formats = ['pdf', 'doc', 'docx', 'zip', 'rar', 'rtf', 'html', 'htm']
     non_parsing_doc_formats = ['dwg', 'bc3']
@@ -90,7 +92,7 @@ def store_document_text(url, bid_id, doc_id, hash):
                                 else:
                                     print(f'We may need and OCR {url}')
                         elif rarfile_doc_format.lower() not in non_parsing_doc_formats:
-                             print(f'Unstudied format inside rar {rarfile_doc_format}')
+                            print(f'Unstudied format inside rar {rarfile_doc_format}')
             return
     else:
         print(f'{doc_format}: {url}')
@@ -102,18 +104,22 @@ def store_document_text(url, bid_id, doc_id, hash):
 
 
 def get_pdf_text(buffer, url):
+    # parsed_data = parser.from_buffer(buffer)
+    # print('Parsed data')
     while True:
         try:
             parsed_data = parser.from_buffer(buffer)
             break
-        except:
+        except Exception as e:
+            print(type(e).__name__)
+            sleep(30)
             continue
     ocr = False
     text = parsed_data['content']
     if 'content' in parsed_data and parsed_data['content'] is not None:
         text = remove_punctuation(text)
     if ('content' in parsed_data and parsed_data['content'] is None) or not text:
-        headers = {'X-Tika-PDFextractInlineImages': 'true'}
+        headers = {'X-Tika-PDFOcrStrategy': 'ocr_only', 'X-Tika-OCRLanguage': 'spa'}
         parsed_data = parser.from_buffer(buffer, headers=headers)
         ocr = True
         text = parsed_data['content']
@@ -127,8 +133,8 @@ def get_pdf_text(buffer, url):
     if lg != 'es':
         print(f"Detected non-spanish text in document {url}. {lg} detected")
         return '', False
-    # else:
-    #     pos_and_lemmatize(text)
+    else:
+        pos_and_lemmatize(text)
     return text, ocr
 
 
@@ -146,13 +152,8 @@ def remove_punctuation(raw_text):
 
 
 def pos_and_lemmatize(text):
-    tokens = text.split()
-    split_tokens = split_array(tokens, 150) # Split text in chunks of 150 words so librairy can lemmatize the whole text
-    lemmatized_text = str()
-    for chunk in split_tokens:
-        chunk = ' '.join(chunk).lower()
-        json_request = {"filter": ["NOUN", "ADJECTIVE", "VERB", "ADVERB"], "multigrams": True, "references": False,
-                        "text": chunk}
-        token_info = requests.post('http://localhost:7777/es/annotations', json=json_request).content.decode('utf-8')
-        token_info = json.loads(token_info)['annotatedText']
-        print('stop')
+    json_request = {"filter": ["NOUN", "ADJECTIVE", "VERB", "ADVERB"], "multigrams": True, "references": False,
+                    "lang": 'es', "text": text}
+    token_info = requests.post('http://localhost:7777/nlp/annotations', json=json_request).content.decode('utf-8')
+    token_info = json.loads(token_info)['annotatedText']
+    print('stop')

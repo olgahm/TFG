@@ -1099,6 +1099,7 @@ def process_xml_atom(root, manager):
         db_logger.debug('Storing or updating bids in database...')
         data = item_to_database(bids_to_database, 'bids', data)
         db_logger.debug('Reloading bid and organization information from database...')
+        print('Updating bids')
         stored_data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
     manager[0] = stored_data
     manager[1] = gc_dict

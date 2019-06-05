@@ -329,16 +329,13 @@ def remove_duplicates():
     for table in tables_w_dups:
         print(table)
         print(datetime.now())
-        if 'doc' in table:
-            continue
         stored_data = get_data_from_table(table)
         unique_bid_ids = list(dict.fromkeys(stored_data['bid_id']))
-        num_processes = 12
         if len(unique_bid_ids) > 0:
             from functools import partial
             unique_bid_ids_split = split_array(unique_bid_ids, len(unique_bid_ids) // 4)
             func = partial(get_dupes, stored_data, table)
-            with Pool(num_processes) as pool:
+            with Pool() as pool:
                 pool.map(func, unique_bid_ids_split)
             # for split in unique_bid_ids_split:
             #     get_dupes(stored_data, table, split)
@@ -376,8 +373,12 @@ def get_dupes(stored_data, table, unique_bid_ids):
                 for other_row in distinct_rows:
                     if set([value for value in this_row if value is not None]).issubset(
                             [value for value in other_row if value is not None]) and this_row != other_row:
+                        print(this_row)
+                        print(other_row)
+                        print(distinct_rows)
                         latest_entry = False
                         break
+                        sys.exit(0)
                 if latest_entry:
                     copy_dis_rows.append(this_row)
 
@@ -388,7 +389,7 @@ def get_dupes(stored_data, table, unique_bid_ids):
                 # print('Removing dupes and storing unique bid information')
                 deletion_cond += f"bid_id='{bid_id}' OR "
                 to_insert += copy_dis_rows
-                if len(to_insert) > 5000:
+                if len(to_insert) > 500:
                     print('Deleting dupes...')
                     get_db_connection().deleteRowTables(table, deletion_cond[:-3])
                     deletion_cond = str()
