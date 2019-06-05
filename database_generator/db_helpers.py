@@ -319,94 +319,21 @@ def is_stored(table, item, storage_mode, items_in_database):
 
 
 def remove_duplicates():
-    """Function to remove duplicate rows from tables in database without primary key
+    """Function to remove duplicate rows from tables.
+    This is done by taking all distinct records and writing them to a new table. This new
+    table becomes the main table and the old one is dropped
 
     :return:
     """
-    table_names = get_all_table_names()
-    primary_keys = [get_primary_key(table) for table in table_names]
-    tables_w_dups = [table_names[index] for index, key in enumerate(primary_keys) if not key]
-    for table in tables_w_dups:
-        print(table)
-        print(datetime.now())
-        stored_data = get_data_from_table(table)
-        unique_bid_ids = list(dict.fromkeys(stored_data['bid_id']))
-        if len(unique_bid_ids) > 0:
-            from functools import partial
-            unique_bid_ids_split = split_array(unique_bid_ids, len(unique_bid_ids) // 4)
-            func = partial(get_dupes, stored_data, table)
-            with Pool() as pool:
-                pool.map(func, unique_bid_ids_split)
-            # for split in unique_bid_ids_split:
-            #     get_dupes(stored_data, table, split)
-        print(f'Finished checking dupes for table {table} at {datetime.now()}')
-
-
-def get_dupes(stored_data, table, unique_bid_ids):
-    stored_bid_ids = stored_data['bid_id']
-    columns = [field for field in stored_data]
-    to_insert = list()
-    deletion_cond = str()
-    for bid_id in unique_bid_ids:
-        # print(bid_id)
-        # print('In database')
-        rows_4_id = [index for index, value in enumerate(stored_bid_ids) if bid_id == stored_bid_ids[index]]
-        # print(len(rows_4_id))
-        if len(rows_4_id) > 1:
-            values_2_compare = list()
-            for index in rows_4_id:
-                values_2_compare.append([str(stored_data[field][index]) for field in stored_data])
-            seen = set()
-            distinct_rows = [x for x in values_2_compare if frozenset(x) not in seen and not seen.add(frozenset(x))]
-
-            for row in distinct_rows:
-                for index, item in enumerate(row):
-                    if item.lower() == 'nan' or item == 'None':
-                        row[index] = None
-            # print(distinct_rows)
-            # sys.exit(0)
-            # All rows have the same field order, so go one by one checking if the item has a longer match
-            copy_dis_rows = list()
-
-            for this_row in distinct_rows:
-                latest_entry = True
-                for other_row in distinct_rows:
-                    if set([value for value in this_row if value is not None]).issubset(
-                            [value for value in other_row if value is not None]) and this_row != other_row:
-                        print(this_row)
-                        print(other_row)
-                        print(distinct_rows)
-                        latest_entry = False
-                        break
-                        sys.exit(0)
-                if latest_entry:
-                    copy_dis_rows.append(this_row)
-
-
-            # print('Distinct')
-            # print(len(distinct_rows))
-            if len(values_2_compare) != len(copy_dis_rows):
-                # print('Removing dupes and storing unique bid information')
-                deletion_cond += f"bid_id='{bid_id}' OR "
-                to_insert += copy_dis_rows
-                if len(to_insert) > 500:
-                    print('Deleting dupes...')
-                    get_db_connection().deleteRowTables(table, deletion_cond[:-3])
-                    deletion_cond = str()
-                    print('Insert unique rows...\n\n\n\n\n')
-                    try:
-                        get_db_connection().insertInTable(table, columns, to_insert)
-                    except:
-                        print(columns)
-                        print(to_insert)
-                        sys.exit(0)
-                    to_insert = list()
-    if to_insert:
-        print('Final insertion')
-        print('Deleting dupes...')
-        get_db_connection().deleteRowTables(table, deletion_cond[:-3])
-        print('Inserting unique rows...')
-        get_db_connection().insertInTable(table, columns, to_insert)
+    mysql_connection = get_db_connection()
+    tablenames = mysql_connection.getTableNames()
+    for tablename in tablenames:
+        # Rename table for taking only unique records
+        column_names = ', '.join(mysql_connection.getColumnNames(tablename))
+        mysql_connection._c.execute(f'RENAME TABLE {tablename} to {tablename}_tmp')
+        mysql_connection._c.execute(f'CREATE TABLE {tablename} SELECT * FROM {tablename}_tmp GROUP BY {column_names}')
+        mysql_connection._c.execute(f'DROP TABLE {tablename}_tmp')
+        mysql_connection._conn.commit()
 
 
 def get_db_bid_info():
