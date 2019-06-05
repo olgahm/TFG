@@ -53,7 +53,7 @@ def get_data_from_table(table):
     return table_dict
 
 
-def item_to_database(items, db_table, recent_data=None):
+def item_to_database(items, db_table, db_conn, recent_data=None):
     """Function to process DocItem in the database.
     Since we are processing strings of unknown length and some of them may be too long to fit in one MySQL field,
     if needed the text is split in halves until it fits in the row. This way we may have more than one entry for the
@@ -124,12 +124,12 @@ def item_to_database(items, db_table, recent_data=None):
             columns = [field for field in to_insert[0]]
             for item in to_insert:
                 rows.append([item[field] for field in columns])
-            get_db_connection().insertInTable(db_table, columns, rows)
+            db_conn.insertInTable(db_table, columns, rows)
         if to_update:
             for item in to_update:  # TODO: Try to group items with same fields to change in order to save time
                 fields = [field for field in item if item[field] is not None]
                 values = [[item[pk]] + [item[field] for field in fields]]
-                get_db_connection().setField(db_table, pk, fields, values)
+                db_conn.setField(db_table, pk, fields, values)
     except BaseException as e:
         if 'Duplicate' in str(e):
             if recent_data:

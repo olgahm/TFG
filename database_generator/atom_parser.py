@@ -12,6 +12,7 @@ from database_generator.db_helpers import item_to_database
 from config import db_logger
 from unidecode import unidecode
 from mysql_helpers import BaseDMsql
+from Document import Document
 
 bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "deleted_at_offset": None,
               "last_updated_offset": None, "bid_status": None, "id_expediente": None, "duracion": None,
@@ -31,7 +32,6 @@ bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "de
               "porcentaje_maximo_subcontratacion": None, "ponderacion_adjudicacion": None, "fecha_inicio": None,
               "fecha_fin": None, "curriculum_requerido": None, "admision_variantes": None, "candidatos_esperados": None,
               "candidatos_maximos": None, "candidatos_minimos": None}
-doc_schema = {"doc_id": None, "doc_url": None, "bid_id": None, "doc_type": None, "texto": None, "doc_hash": None}
 org_schema = {"nombre": None, "tipo_organismo": None, "uri": None, "id": None, "direccion": None, "cp": None,
               "ciudad": None, "pais": None, "nombre_contacto": None, "telefono_contacto": None, "fax_contacto": None,
               "email_contacto": None, "razon_social": None}
@@ -62,9 +62,8 @@ required_business_classification_schema = {"bid_id": None, "codigo_clasificacion
                                            "clasificacion_empresarial": None}
 
 
-def is_in_db(table, ref_field, value):
-    conn = BaseDMsql(db_name='contratacion_del_estado', db_connector='mysql', db_server='localhost', db_user='root',
-                     db_password='23091996')
+def is_in_db(table, ref_field, value, conn):
+
     df = conn.readDBtable(table, selectOptions='id', filterOptions=f"{ref_field}='{value}'")
     if df.empty:
         return False
@@ -81,9 +80,9 @@ def get_next_link(root):
     return next_link, root
 
 
-def process_xml_atom(root, db_conn, manager):
-    stored_data = manager[0]
-    gc_dict = manager[1]
+def parse_atom_feed(root, db_conn, manager):
+
+    gc_dict = manager[0]
     bids_to_database = list()
     orgs_to_database = list()
     mods_to_database = list()
@@ -251,41 +250,15 @@ def process_xml_atom(root, db_conn, manager):
                         if url_codes:
                             code_dict = code_mapper(url_codes, gc_dict)
                             bid_metadata['pais_ejecucion'] = code_dict.get(code, code)
-        # DOCUMENTOS: Van en otra base de datos (1 licitación - N documentos)
-        ## PLIEGO ADMINISTRATIVO (0-1)
 
-        doc_element = status.find('LegalDocumentReference')
-        if doc_element is not None:
-            doc_metadata = doc_schema.copy()
-            doc_metadata['bid_id'] = bid_metadata['bid_uri']
-            doc_metadata['doc_id'] = doc_element.find('ID').text
-            doc_metadata['doc_url'] = doc_element.find('Attachment/ExternalReference/URI').text
-            doc_hash = doc_element.find('Attachment/ExternalReference/DocumentHash')
-            if doc_hash is not None:
-                doc_metadata['doc_hash'] = doc_hash.text
-            doc_metadata['doc_type'] = 'administrativo'
-            docs_to_database.append(doc_metadata)
+        # DOCUMENTOS: Van en otra base de datos (1 licitación - N documentos)
+
+        ## PLIEGO ADMINISTRATIVO (0-1)
+        docs_to_database.append(get_legal_document(bid_metadata['bid_uri'], status))
         ## PLIEGO TECNICO (0-1)
-        doc_element = status.find('TechnicalDocumentReference')
-        if doc_element is not None:
-            doc_metadata = doc_schema.copy()
-            doc_metadata['bid_id'] = bid_metadata['bid_uri']
-            doc_metadata['doc_id'] = doc_element.find('ID').text
-            doc_metadata['doc_url'] = doc_element.find('Attachment/ExternalReference/URI').text
-            if doc_element.find('Attachment/ExternalReference/DocumentHash') is not None:
-                doc_metadata['doc_hash'] = doc_element.find('Attachment/ExternalReference/DocumentHash').text
-            doc_metadata['doc_type'] = 'tecnico'
-            docs_to_database.append(doc_metadata)
+        docs_to_database.append(get_technical_document(bid_metadata['bid_uri'], status))
         ## OTROS DOCUMENTOS (0-N)
-        for doc_element in status.iterfind('AdditionalDocumentReference'):
-            doc_metadata = doc_schema.copy()
-            doc_metadata['bid_id'] = bid_metadata['bid_uri']
-            doc_metadata['doc_id'] = doc_element.find('ID').text
-            doc_metadata['doc_url'] = doc_element.find('Attachment/ExternalReference/URI').text
-            if doc_element.find('Attachment/ExternalReference/DocumentHash') is not None:
-                doc_metadata['doc_hash'] = doc_element.find('Attachment/ExternalReference/DocumentHash').text
-            doc_metadata['doc_type'] = 'otro'
-            docs_to_database.append(doc_metadata)
+        docs_to_database += get_other_documents(bid_metadata['bid_uri'], status)
 
         # LOTES (1)
         for lot_element in status.iterfind('ProcurementProjectLot'):
@@ -1080,6 +1053,7 @@ def process_xml_atom(root, db_conn, manager):
                     copy2_pub_metadata['fecha_publicacion'] = pub_date.text
                     publications_to_database.append(copy2_pub_metadata)
         bids_to_database.append(bid_metadata)
+    docs_to_database = [vars(doc) for doc in docs_to_database if doc is not None]
     if mods_to_database:
         item_to_database(mods_to_database, 'contract_mods')
     if winners_to_database:
@@ -1120,6 +1094,47 @@ def process_xml_atom(root, db_conn, manager):
         stored_data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
     manager[0] = stored_data
     manager[1] = gc_dict
+
+
+
+
+
+def get_legal_document(bid_id, contract_folder_status):
+    doc_element = contract_folder_status.find('LegalDocumentReference')
+    if doc_element is not None:
+        name = doc_element.find('ID').text
+        url = doc_element.find('Attachment/ExternalReference/URI').text
+        doc_hash = doc_element.find('Attachment/ExternalReference/DocumentHash')
+        if doc_hash is not None:
+            document = Document(name, url, 'administrativo', bid_id, doc_hash.text)
+        else:
+            document = Document(name, url, 'administrativo', bid_id)
+        return document
+
+def get_technical_document(bid_id, contract_folder_status):
+    doc_element = contract_folder_status.find('TechnicalDocumentReference')
+    if doc_element is not None:
+        name = doc_element.find('ID').text
+        url = doc_element.find('Attachment/ExternalReference/URI').text
+        doc_hash = doc_element.find('Attachment/ExternalReference/DocumentHash')
+        if doc_hash is not None:
+            document = Document(name, url, 'tecnico', bid_id, doc_hash.text)
+        else:
+            document = Document(name, url, 'tecnico', bid_id)
+        return document
+
+def get_other_documents(bid_id, contract_folder_status):
+    other_docs = list()
+    for doc_element in contract_folder_status.iterfind('AdditionalDocumentReference'):
+        name = doc_element.find('ID').text
+        url = doc_element.find('Attachment/ExternalReference/URI').text
+        doc_hash = doc_element.find('Attachment/ExternalReference/DocumentHash')
+        if doc_hash is not None:
+            document = Document(name, url, 'otro', bid_id, doc_hash.text)
+        else:
+            document = Document(name, url, 'otro', bid_id)
+        other_docs.append(document)
+    return other_docs
 
 
 def parse_rfc3339_time(date):

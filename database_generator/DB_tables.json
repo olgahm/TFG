@@ -77,13 +77,14 @@
     "fields": {
       "AUTO_INCREMENT": ["id"],
       "TEXT": [
-        "doc_id",
-        "doc_url",
+        "name",
+        "url",
         "bid_id",
-        "doc_type",
-        "doc_hash",
-        "idioma"
-      ]
+        "content_type",
+        "doc_hash"
+      ],
+      "BOOLEAN": ["ocr"],
+      "VARCHAR(2)": ["language"]
     }
   },
   "orgs": {
@@ -198,11 +199,11 @@
     }
   },
   "bid_cpv_codes": {
-    "primary_key": null,
+    "primary_key": "code",
     "fields": {
+      "INT": ["code"],
       "TEXT": [
         "bid_id",
-        "code",
         "code_description"
       ]
     }
@@ -219,8 +220,9 @@
     }
   },
   "awarding_conditions": {
-    "primary_key": null,
+    "primary_key": "id",
     "fields": {
+      "AUTO_INCREMENT": ["id"],
       "TEXT": [
         "bid_id",
         "criterio_adjudicacion",
@@ -229,8 +231,9 @@
     }
   },
   "admission_conditions": {
-    "primary_key": null,
+    "primary_key": "id",
     "fields": {
+      "AUTO_INCREMENT": ["id"],
       "TEXT": [
         "bid_id",
         "condicion"

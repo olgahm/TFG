@@ -55,31 +55,31 @@ def exit():
     sys.exit(0)
 
 
-def extract_text_from_docs():
-    """Function to trigger document download and text extraction and storage in database
-
-    :return:
-    """
-    tech_docs_info = get_db_connection().readDBtable(tablename='docs', selectOptions='*',
-                                                     filterOptions="doc_type='tecnico'")
-    urls = tech_docs_info['doc_url'].tolist()
-    bid_ids = tech_docs_info['bid_id'].tolist()
-
-
-
-
-    hashes = tech_docs_info['doc_hash'].tolist()
-    stored_bids = get_db_connection().readDBtable(tablename='texts', selectOptions='bid_id')['bid_id'].tolist()
-    stored_bids = list(dict.fromkeys([re.sub('_\d+', '', bid) for bid in stored_bids]))
-    tech_docs = list()
-    for index in range(len(urls)):
-        if bid_ids[index] not in stored_bids:
-            tech_docs.append([urls[index], bid_ids[index], doc_ids[index], hashes[index]])
-    for doc in tech_docs:
-        store_document_text(doc[0], doc[1], doc[2], doc[3])
-    # p = Pool(2)
-    # p.starmap(store_document_text, tech_docs)
-    print('Finished parsing docs!')
+# def extract_text_from_docs():
+#     """Function to trigger document download and text extraction and storage in database
+#
+#     :return:
+#     """
+#     tech_docs_info = get_db_connection().readDBtable(tablename='docs', selectOptions='*',
+#                                                      filterOptions="doc_type='tecnico'")
+#     urls = tech_docs_info['doc_url'].tolist()
+#     bid_ids = tech_docs_info['bid_id'].tolist()
+#
+#
+#
+#
+#     hashes = tech_docs_info['doc_hash'].tolist()
+#     stored_bids = get_db_connection().readDBtable(tablename='texts', selectOptions='bid_id')['bid_id'].tolist()
+#     stored_bids = list(dict.fromkeys([re.sub('_\d+', '', bid) for bid in stored_bids]))
+#     tech_docs = list()
+#     for index in range(len(urls)):
+#         if bid_ids[index] not in stored_bids:
+#             tech_docs.append([urls[index], bid_ids[index], doc_ids[index], hashes[index]])
+#     for doc in tech_docs:
+#         store_document_text(doc[0], doc[1], doc[2], doc[3])
+#     # p = Pool(2)
+#     # p.starmap(store_document_text, tech_docs)
+#     print('Finished parsing docs!')
 
 
 def reconstruct_database():
