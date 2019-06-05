@@ -1,18 +1,20 @@
-import requests
 from io import BytesIO
+import os
+
+from bs4 import BeautifulSoup
+from lxml import etree
+import re
+import requests
 import zipfile
-from database_generator.atom_parser import process_xml_atom
-from database_generator.atom_parser import get_next_link
-from database_generator.db_helpers import DB_GEN_PATH
+
+from config import db_logger
 from database_generator.atom_parser import clean_elements
+from database_generator.atom_parser import get_next_link
+from database_generator.atom_parser import process_xml_atom
+from database_generator.db_helpers import DB_GEN_PATH
 from database_generator.db_helpers import get_data_from_table
 from database_generator.db_helpers import get_db_bid_info
-from config import db_logger
-from lxml import etree
 from datetime import datetime
-import re
-from bs4 import BeautifulSoup
-import os
 
 
 def get_urls_to_crawl():
