@@ -61,10 +61,10 @@ class BaseDMsql(object):
             if self.connector == 'mysql':
                 if self.port:
                     self._conn = pymysql.connect(self.server, self.user, self.password, self.dbname, port=self.port,
-                                                 charset='utf8mb4', autocommit=True)
+                                                 charset='utf8mb4')
                 else:
                     self._conn = pymysql.connect(self.server, self.user, self.password, self.dbname,
-                                                 charset='utf8mb4', autocommit=True)
+                                                 charset='utf8mb4')
                 self._c = self._conn.cursor()
                 print("MySQL database connection successful")
                 self.dbON = True
@@ -378,14 +378,12 @@ class BaseDMsql(object):
             if self.connector == 'mysql':
                 sqlcmd = "SHOW COLUMNS FROM " + tablename
                 self._c.execute(sqlcmd)
-                self._conn.commit()
                 columnnames = [el[0] for el in self._c.fetchall()]
             else:
                 sqlcmd = "PRAGMA table_info(" + tablename + ")"
                 self._c.execute(sqlcmd)
-                self._conn.commit()
                 columnnames = [el[1] for el in self._c.fetchall()]
-
+            self._conn.commit()
             return columnnames
 
         else:
@@ -401,7 +399,7 @@ class BaseDMsql(object):
         sqlcmd = "SELECT COUNT(*) FROM " + tablename
         self._c.execute(sqlcmd)
         n_rows = self._c.fetchall()[0][0]
-
+        self._conn.commit()        
         return cols, n_rows
 
     def insertInTable(self, tablename, columns, arguments):
