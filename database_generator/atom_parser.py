@@ -11,6 +11,7 @@ from database_generator.db_helpers import is_deleted
 from database_generator.db_helpers import item_to_database
 from config import db_logger
 from unidecode import unidecode
+from mysql_helpers import BaseDMsql
 
 bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "deleted_at_offset": None,
               "last_updated_offset": None, "bid_status": None, "id_expediente": None, "duracion": None,
@@ -61,6 +62,16 @@ required_business_classification_schema = {"bid_id": None, "codigo_clasificacion
                                            "clasificacion_empresarial": None}
 
 
+def is_in_db(table, ref_field, value):
+    conn = BaseDMsql(db_name='contratacion_del_estado', db_connector='mysql', db_server='localhost', db_user='root',
+                     db_password='23091996')
+    df = conn.readDBtable(table, selectOptions='id', filterOptions=f"{ref_field}='{value}'")
+    if df.empty:
+        return False
+    else:
+        return True
+
+
 def get_next_link(root):
     root = clean_elements(root)
     for link in root.iterfind('link'):
@@ -100,8 +111,12 @@ def process_xml_atom(root, manager):
             break
     # Get information for deleted entries
     for deleted_entry in root.iterfind('deleted-entry'):
-        bid_metadata = bid_schema.copy()
         id = deleted_entry.attrib['ref']
+        if is_in_db('bids', 'bid_uri', id):
+            # Check if already deleted
+
+            pass
+        bid_metadata = bid_schema.copy()
         db_logger.debug(f'Processing bid {id}')
         deletion_date = deleted_entry.attrib['when']
         deletion_date, offset = parse_rfc3339_time(deletion_date)
@@ -111,11 +126,13 @@ def process_xml_atom(root, manager):
         if not is_deleted(id, bid_metadata, stored_data):
             bids_to_database.append(bid_metadata)
     for entry in root.iterfind('entry'):
-        bid_metadata = bid_schema.copy()
         # Get mandatory info for bid
         id = entry.find('id').text  # Unique ID
-        # if '2433494' in id:
-        #     print('last_item')
+        if is_in_db('bids', 'bid_uri', id):
+            # Check if older or newer than in db
+
+            pass
+        bid_metadata = bid_schema.copy()
         last_updated = entry.find('updated').text
         last_updated, offset = parse_rfc3339_time(last_updated)
         if not is_new_or_update(id, last_updated, offset, bid_metadata, stored_data):

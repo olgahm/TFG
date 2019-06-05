@@ -630,3 +630,7 @@ class BaseDMsql(object):
             df.to_excel(fpath, engine='xlsxwriter')
 
         return
+
+    def execute_command(self, cmd):
+        self._c.execute(cmd)
+        self._conn.commit()

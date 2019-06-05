@@ -1,7 +1,8 @@
 {
   "bids": {
-    "primary_key": "bid_uri",
+    "primary_key": "id",
     "fields": {
+      "AUTO_INCREMENT": ["id"],
       "TEXT": [
         "bid_uri",
         "title",
@@ -72,8 +73,9 @@
     }
   },
   "docs": {
-    "primary_key": null,
+    "primary_key": "id",
     "fields": {
+      "AUTO_INCREMENT": ["id"],
       "TEXT": [
         "doc_id",
         "doc_url",
