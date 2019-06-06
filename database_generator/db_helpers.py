@@ -69,55 +69,58 @@ def item_to_database(items, db_table, recent_data=None):
     for item in to_update:
         if item.get('storage_mode'):
             del item['storage_mode']
-    queued = list()
-    final_to_insert = list()
     for item in to_insert:
-        if pk is not None:
-            if item[pk].lower().strip() not in queued:
-                final_to_insert.append(item)
-                queued.append(item[pk].lower().strip())
-            elif db_table == 'bids':
-                # If the item is considered new but in queue, pass to update list
-                to_update.append(item)
-        if item.get('storage_mode', ''):
+        if item.get('storage_mode'):
             del item['storage_mode']
-    if final_to_insert:
-        to_insert = final_to_insert
-
-    # Check if bid queued to be updated are more recent
-    final_to_update = list()
-    if to_update and db_table == 'bids':
-        unique_bid_ids = list(dict.fromkeys([item[pk] for item in to_update]))
-        for bid in unique_bid_ids:
-            null_date_indexes = [index for index, item in enumerate(to_update) if
-                                 item[pk] == bid and to_update[index]['last_updated'] is None]
-            for index in null_date_indexes:
-                final_to_update.append(to_update[index])
-            date_indexes = [index for index, item in enumerate(to_update) if
-                            item[pk] == bid and to_update[index]['last_updated'] is not None]
-            dates = [datetime.strptime(to_update[index]['last_updated'], '%Y-%m-%d %H:%M:%S') for index in date_indexes]
-            if dates:
-                if len(dates) > 1:
-                    maximum_date = max(date for date in dates)
-                    max_date_index = date_indexes[dates.index(maximum_date)]
-                else:
-                    max_date_index = date_indexes[0]
-                # Check if there is a new bid with with id and compare times
-                if any(item[pk] == bid for item in to_insert):
-                    insert_bid_index = [index for index, item in enumerate(to_insert) if item[pk] == bid][0]
-                    insert_last_update = to_insert[insert_bid_index]['last_updated']
-                    if insert_last_update is not None:
-                        if datetime.strptime(to_update[max_date_index]['last_updated'],
-                                             '%Y-%m-%d %H:%M:%S') > datetime.strptime(insert_last_update,
-                                                                                      '%Y-%m-%d %H:%M:%S'):
-                            print(to_update[max_date_index]['last_updated'])
-                            print(insert_last_update)
-                            sys.exit(0)
-                            to_insert[insert_bid_index] = to_update[max_date_index]
-                        continue
-                final_to_update.append(to_update[max_date_index])
-    if final_to_update:
-        to_update = final_to_update
+    # queued = list()
+    # final_to_insert = list()
+    # for item in to_insert:
+    #     if pk is not None:
+    #         if item[pk].lower().strip() not in queued:
+    #             final_to_insert.append(item)
+    #             queued.append(item[pk].lower().strip())
+    #         elif db_table == 'bids':
+    #             # If the item is considered new but in queue, pass to update list
+    #             to_update.append(item)
+    #     if item.get('storage_mode', ''):
+    #         del item['storage_mode']
+    # if final_to_insert:
+    #     to_insert = final_to_insert
+    #
+    # # Check if bid queued to be updated are more recent
+    # final_to_update = list()
+    # if to_update and db_table == 'bids':
+    #     unique_bid_ids = list(dict.fromkeys([item[pk] for item in to_update]))
+    #     for bid in unique_bid_ids:
+    #         null_date_indexes = [index for index, item in enumerate(to_update) if
+    #                              item[pk] == bid and to_update[index]['last_updated'] is None]
+    #         for index in null_date_indexes:
+    #             final_to_update.append(to_update[index])
+    #         date_indexes = [index for index, item in enumerate(to_update) if
+    #                         item[pk] == bid and to_update[index]['last_updated'] is not None]
+    #         dates = [datetime.strptime(to_update[index]['last_updated'], '%Y-%m-%d %H:%M:%S') for index in date_indexes]
+    #         if dates:
+    #             if len(dates) > 1:
+    #                 maximum_date = max(date for date in dates)
+    #                 max_date_index = date_indexes[dates.index(maximum_date)]
+    #             else:
+    #                 max_date_index = date_indexes[0]
+    #             # Check if there is a new bid with with id and compare times
+    #             if any(item[pk] == bid for item in to_insert):
+    #                 insert_bid_index = [index for index, item in enumerate(to_insert) if item[pk] == bid][0]
+    #                 insert_last_update = to_insert[insert_bid_index]['last_updated']
+    #                 if insert_last_update is not None:
+    #                     if datetime.strptime(to_update[max_date_index]['last_updated'],
+    #                                          '%Y-%m-%d %H:%M:%S') > datetime.strptime(insert_last_update,
+    #                                                                                   '%Y-%m-%d %H:%M:%S'):
+    #                         print(to_update[max_date_index]['last_updated'])
+    #                         print(insert_last_update)
+    #                         sys.exit(0)
+    #                         to_insert[insert_bid_index] = to_update[max_date_index]
+    #                     continue
+    #             final_to_update.append(to_update[max_date_index])
+    # if final_to_update:
+    #     to_update = final_to_update
     try:
         if to_insert:
             rows = list()
@@ -239,38 +242,29 @@ def new_bid(bid_uri, bid_metadata, items_in_database):
         return True
 
 
-def more_recent_bid(bid_uri, last_updated, offset, bid_metadata, items_in_database):
-    stored_bids = items_in_database['bids']['bid_uri']  # List of stored bids
-    stored_last_updates = items_in_database['bids']['last_updated']  # List of update times
-    stored_last_update_offsets = items_in_database['bids']['last_updated_offset']  # List of update offsets
-    if bid_uri in stored_bids:
-        index = stored_bids.index(bid_uri)
-        stored_last_update = str(stored_last_updates[index])
-        stored_offset = stored_last_update_offsets[index]
-        bid_metadata['storage_mode'] = 'update'
-        if stored_offset is None:
+def more_recent_bid(bid_uri, last_updated, offset, stored_last_update, stored_offset, bid_metadata):
+    if stored_offset is None:         # This means that the bid appears as deleted but there is not actual data for the bid
+        return True
+    else:
+        if stored_offset != offset:  # If different offsets, transform times to UTC
+            hours, minutes = offset.split(':')
+            stored_hours, stored_minutes = stored_offset.split(':')
+            hours = int(hours)
+            stored_hours = int(stored_hours)
+            minutes = int(minutes)
+            stored_minutes = int(stored_minutes)
+            last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S") - timedelta(hours=hours,
+                                                                                           minutes=minutes)
+            stored_last_update = datetime.strptime(str(stored_last_update), "%Y-%m-%d %H:%M:%S") - timedelta(
+                hours=stored_hours, minutes=stored_minutes)
+        else:
+            last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S")
+            stored_last_update = datetime.strptime(str(stored_last_update), "%Y-%m-%d %H:%M:%S")
+        if last_update > stored_last_update:
+            db_logger.debug(f'Bid {bid_uri} is more recent than stored entry. Updating bid...')
             return True
         else:
-            if stored_offset != offset:  # If different offsets, transform times to UTC
-                hours, minutes = offset.split(':')
-                stored_hours, stored_minutes = stored_offset.split(':')
-                hours = int(hours)
-                stored_hours = int(stored_hours)
-                minutes = int(minutes)
-                stored_minutes = int(stored_minutes)
-                last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S") - timedelta(hours=hours,
-                                                                                               minutes=minutes)
-                stored_last_update = datetime.strptime(stored_last_update, "%Y-%m-%d %H:%M:%S") - timedelta(
-                    hours=stored_hours, minutes=stored_minutes)
-            else:
-                last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S")
-                stored_last_update = datetime.strptime(stored_last_update, "%Y-%m-%d %H:%M:%S")
-            if last_update > stored_last_update:
-                db_logger.debug(f'Bid {bid_uri} is more recent than stored entry. Updating bid...')
-                return True
-    else:
-        bid_metadata['storage_mode'] = 'new'
-        return False
+            return False
 
 
 def is_new_or_update(bid_uri, last_update, offset, bid_metadata, items_in_database):

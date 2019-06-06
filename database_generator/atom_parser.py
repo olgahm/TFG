@@ -11,6 +11,8 @@ from database_generator.db_helpers import deleted_bid
 from database_generator.db_helpers import item_to_database
 from config import db_logger
 from unidecode import unidecode
+from datetime import datetime
+from collections import Counter
 
 bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "deleted_at_offset": None,
               "last_updated_offset": None, "bid_status": None, "id_expediente": None, "duracion": None,
@@ -30,7 +32,7 @@ bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "de
               "porcentaje_maximo_subcontratacion": None, "ponderacion_adjudicacion": None, "fecha_inicio": None,
               "fecha_fin": None, "curriculum_requerido": None, "admision_variantes": None, "candidatos_esperados": None,
               "candidatos_maximos": None, "candidatos_minimos": None}
-doc_schema = {"doc_id": None, "doc_url": None, "bid_id": None, "doc_type": None, "texto": None, "doc_hash": None}
+doc_schema = {"doc_id": None, "doc_url": None, "bid_id": None, "doc_type": None, "doc_hash": None}
 org_schema = {"nombre": None, "tipo_organismo": None, "uri": None, "id": None, "direccion": None, "cp": None,
               "ciudad": None, "pais": None, "nombre_contacto": None, "telefono_contacto": None, "fax_contacto": None,
               "email_contacto": None, "razon_social": None}
@@ -101,25 +103,28 @@ def process_xml_atom(root, manager):
     # Get information for deleted entries
     for deleted_entry in root.iterfind('deleted-entry'):
         bid_metadata = bid_schema.copy()
-        id = deleted_entry.attrib['ref']
-        db_logger.debug(f'Processing bid {id}')
+        bid_uri = deleted_entry.attrib['ref']
+        db_logger.debug(f'Processing bid {bid_uri}')
         deletion_date = deleted_entry.attrib['when']
         deletion_date, offset = parse_rfc3339_time(deletion_date)
-        bid_metadata['bid_uri'] = id
+        bid_metadata['bid_uri'] = bid_uri
         bid_metadata['deleted_at'] = deletion_date
         bid_metadata['deleted_at_offset'] = offset
-        if not deleted_bid(id, bid_metadata, stored_data):
+        if not deleted_bid(bid_uri, bid_metadata, stored_data):
             bids_to_database.append(bid_metadata)
     for entry in root.iterfind('entry'):
         bid_metadata = bid_schema.copy()
         # Get mandatory info for bid
-        id = entry.find('id').text  # Unique ID
+        bid_uri = entry.find('id').text  # Unique ID
         last_updated = entry.find('updated').text
         last_updated, offset = parse_rfc3339_time(last_updated)
-        if not new_bid(id, bid_metadata, stored_data):
-            if not more_recent_bid(id, last_updated, offset, bid_metadata, stored_data):
+        if not new_bid(bid_uri, bid_metadata, stored_data):
+            bid_index = stored_data['bids']['bid_uri'].index(bid_uri)
+            stored_last_updated = stored_data['bids']['last_updated'][bid_index]
+            stored_offset = stored_data['bids']['last_updated_offset'][bid_index]
+            if not more_recent_bid(bid_uri, last_updated, offset, stored_last_updated, stored_offset, bid_metadata):
                 continue
-        bid_metadata['bid_uri'] = id
+        bid_metadata['bid_uri'] = bid_uri
         bid_metadata['title'] = entry.find('title').text
         bid_metadata['link'] = entry.find('link').attrib['href']
         bid_metadata['last_updated'] = last_updated
@@ -1096,6 +1101,30 @@ def process_xml_atom(root, manager):
         data = item_to_database(orgs_to_database, 'orgs')
     if bids_to_database:
         db_logger.debug('Storing or updating bids in database...')
+        # Order bid list by last update, keeping deleted bids first
+        deleted_bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is None]
+        bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is not None]
+        bids_to_db = sorted(bids_to_db, key=lambda x: datetime.strptime(x['last_updated'], "%Y-%m-%d "
+                                                                                           "%H:%M:%S"), reverse=True)
+        bid_ids = Counter([bid['bid_uri'] for bid in bids_to_db])
+        bids_to_database = list()
+        for bid_id in bid_ids:
+            counter = bid_ids[bid_id]
+            if counter > 1:
+                bids = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id]
+                # The bid list is ordered by date, so the first element will be the most recent one
+                most_recent = bids[0]
+                if any([bid['storage_mode'] == 'new' for bid in bids]):
+                    most_recent['storage_mode'] = 'new'
+                else:
+                    most_recent['storage_mode'] = 'update'
+            else:
+                most_recent = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id][0]
+            bids_to_database.append(most_recent)
+
+        bid_ids = Counter(bid['bid_uri'])
+
+
         data = item_to_database(bids_to_database, 'bids', data)
         db_logger.debug('Reloading bid and organization information from database...')
         print('Updating bids')
