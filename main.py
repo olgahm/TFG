@@ -19,7 +19,8 @@ from database_generator.doc_parser import store_document_text
 from database_generator.db_helpers import get_all_table_names
 from database_generator.db_helpers import get_mandatory_keys
 from database_generator.db_helpers import get_primary_key
-from topic_model.model_generator import model_generator
+from database_generator.db_helpers import remove_duplicates
+# from topic_model.model_generator import model_generator
 
 actions = {'1': 'update_database()', '2': 'extract_text_from_docs()', '3': 'reconstruct_database()',
            '4': 'generate_model()', '0': 'exit()'}
@@ -62,10 +63,7 @@ def extract_text_from_docs():
                                                      filterOptions="doc_type='tecnico'")
     urls = tech_docs_info['doc_url'].tolist()
     bid_ids = tech_docs_info['bid_id'].tolist()
-
-
-
-
+    doc_ids = tech_docs_info['doc_id'].tolist()
     hashes = tech_docs_info['doc_hash'].tolist()
     stored_bids = get_db_connection().readDBtable(tablename='texts', selectOptions='bid_id')['bid_id'].tolist()
     stored_bids = list(dict.fromkeys([re.sub('_\d+', '', bid) for bid in stored_bids]))
@@ -95,7 +93,8 @@ def reconstruct_database():
 
 
 def generate_model():
-    model_generator()
+    # model_generator()
+    pass
 
 
 def update_database():
@@ -105,7 +104,7 @@ def update_database():
     for url in urls:
         process_url(url)
     print('Finished')
-    # remove_duplicates()
+    remove_duplicates()
     # extract_text_from_docs()
 
 

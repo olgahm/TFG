@@ -13,6 +13,7 @@ from config import db_logger
 from unidecode import unidecode
 from datetime import datetime
 from collections import Counter
+import sys
 
 bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "deleted_at_offset": None,
               "last_updated_offset": None, "bid_status": None, "id_expediente": None, "duracion": None,
@@ -1097,40 +1098,68 @@ def process_xml_atom(root, manager):
         item_to_database(publications_to_database, 'publications')
     data = None
     if orgs_to_database:
+        orgs_to_database = clean_org_list(orgs_to_database)
         db_logger.debug('Storing or updating organizations in database...')
         data = item_to_database(orgs_to_database, 'orgs')
     if bids_to_database:
-        db_logger.debug('Storing or updating bids in database...')
-        # Order bid list by last update, keeping deleted bids first
-        deleted_bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is None]
-        bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is not None]
-        bids_to_db = sorted(bids_to_db, key=lambda x: datetime.strptime(x['last_updated'], "%Y-%m-%d "
-                                                                                           "%H:%M:%S"), reverse=True)
-        bid_ids = Counter([bid['bid_uri'] for bid in bids_to_db])
-        bids_to_database = list()
-        for bid_id in bid_ids:
-            counter = bid_ids[bid_id]
-            if counter > 1:
-                bids = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id]
-                # The bid list is ordered by date, so the first element will be the most recent one
-                most_recent = bids[0]
-                if any([bid['storage_mode'] == 'new' for bid in bids]):
-                    most_recent['storage_mode'] = 'new'
-                else:
-                    most_recent['storage_mode'] = 'update'
-            else:
-                most_recent = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id][0]
-            bids_to_database.append(most_recent)
-
-        bid_ids = Counter(bid['bid_uri'])
-
-
-        data = item_to_database(bids_to_database, 'bids', data)
+        bids_to_database = clean_bid_list(bids_to_database)
+        item_to_database(bids_to_database, 'bids')
         db_logger.debug('Reloading bid and organization information from database...')
         print('Updating bids')
         stored_data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
     manager[0] = stored_data
     manager[1] = gc_dict
+
+def clean_org_list(orgs_to_database):
+    pass
+
+
+def clean_bid_list(bids_to_database):
+    db_logger.debug('Storing or updating bids in database...')
+    # Order bid list by last update, keeping deleted bids first
+    deleted_bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is None]
+    bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is not None]
+    bids_to_db = sorted(bids_to_db, key=lambda x: datetime.strptime(x['last_updated'], "%Y-%m-%d "
+                                                                                       "%H:%M:%S"), reverse=True)
+    bid_ids = Counter([bid['bid_uri'] for bid in bids_to_db])
+    bids_to_database = list()
+    for bid_id in bid_ids:
+        counter = bid_ids[bid_id]
+        if counter > 1:
+            bids = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id]
+            # The bid list is ordered by date, so the first element will be the most recent one
+            most_recent = bids[0]
+            if any([bid['storage_mode'] == 'new' for bid in bids]):
+                most_recent['storage_mode'] = 'new'
+            else:
+                most_recent['storage_mode'] = 'update'
+        else:
+            most_recent = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id][0]
+        bids_to_database.append(most_recent)
+        print(len(bids_to_database))
+    bids_to_db = deleted_bids_to_db + bids_to_database  # Possition deletion date before so that it is always the first value
+    bids_to_database = list()
+    bid_ids = Counter(bid['bid_uri'] for bid in bids_to_database)
+    for bid_id in bid_ids:
+        counter = bid_ids[bid_id]
+        if counter > 1:
+            bids = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id]
+            print(bids)
+            del_bid = {k: v for k, v in bids[0].items() if v is not None}
+            print(del_bid)
+            actual_bid = bids[1]
+            print(actual_bid)
+            most_recent = {**actual_bid, **del_bid}
+            print(most_recent)
+            sys.exit(0)
+            if any([bid['storage_mode'] == 'new' for bid in bids]):
+                most_recent['storage_mode'] = 'new'
+            else:
+                most_recent['storage_mode'] = 'update'
+        else:
+            most_recent = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id][0]
+        bids_to_database.append(most_recent)
+    return bids_to_database
 
 
 def parse_rfc3339_time(date):
