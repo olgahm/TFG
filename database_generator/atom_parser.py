@@ -6,8 +6,8 @@ import pytz
 from database_generator.db_helpers import is_stored
 from database_generator.db_helpers import get_data_from_table
 from database_generator.db_helpers import get_db_bid_info
-from database_generator.db_helpers import is_new_or_update
-from database_generator.db_helpers import is_deleted
+from database_generator.db_helpers import new_bid, more_recent_bid
+from database_generator.db_helpers import deleted_bid
 from database_generator.db_helpers import item_to_database
 from config import db_logger
 from unidecode import unidecode
@@ -108,18 +108,17 @@ def process_xml_atom(root, manager):
         bid_metadata['bid_uri'] = id
         bid_metadata['deleted_at'] = deletion_date
         bid_metadata['deleted_at_offset'] = offset
-        if not is_deleted(id, bid_metadata, stored_data):
+        if not deleted_bid(id, bid_metadata, stored_data):
             bids_to_database.append(bid_metadata)
     for entry in root.iterfind('entry'):
         bid_metadata = bid_schema.copy()
         # Get mandatory info for bid
         id = entry.find('id').text  # Unique ID
-        # if '2433494' in id:
-        #     print('last_item')
         last_updated = entry.find('updated').text
         last_updated, offset = parse_rfc3339_time(last_updated)
-        if not is_new_or_update(id, last_updated, offset, bid_metadata, stored_data):
-            continue
+        if not new_bid(id, bid_metadata, stored_data):
+            if not more_recent_bid(id, last_updated, offset, bid_metadata, stored_data):
+                continue
         bid_metadata['bid_uri'] = id
         bid_metadata['title'] = entry.find('title').text
         bid_metadata['link'] = entry.find('link').attrib['href']

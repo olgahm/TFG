@@ -146,7 +146,7 @@ def item_to_database(items, db_table, recent_data=None):
                 items = list()
                 for item in to_insert:
                     if 'deleted_at' in item:
-                        if not is_deleted(item[pk], item, stored_data):
+                        if not deleted_bid(item[pk], item, stored_data):
                             items.append(item)
                     else:
                         if is_new_or_update(item[pk], item['last_updated'], item['last_updated_offset'], item,
@@ -201,11 +201,11 @@ def get_mandatory_keys(table):
     return table_info[table]['fields']
 
 
-def is_deleted(bid_uri, bid_metadata, items_in_database):
+def deleted_bid(bid_uri, bid_metadata, items_in_database):
     """
 
     :param bid_uri: Bid id
-    :param bid_metadata: item for metadata
+    :param bid_metadata: Bid data
     :param items_in_database: dict with items stored in database
     :return:
     """
@@ -213,20 +213,64 @@ def is_deleted(bid_uri, bid_metadata, items_in_database):
     stored_offsets = items_in_database['bids']['deleted_at_offset']  # List of deletion_times
     deleted = False
     bid_metadata['storage_mode'] = 'new'
-    if any(bid_uri == stored_bid for stored_bid in stored_bids):
+    if bid_uri in stored_bids:
         db_logger.debug(f'Bid {bid_uri} already stored')
         index = stored_bids.index(bid_uri)
         deletion_date = stored_offsets[index]
-        if deletion_date is not None:
-            db_logger.debug(f'Bid {bid_uri} already deleted from PCSP')
-            deleted = True
-        else:
+        if deletion_date is None:
             db_logger.debug(f'Storing deletion date for bid {bid_uri}')
             deleted = False
             bid_metadata['storage_mode'] = 'update'
+        else:
+            db_logger.debug(f'Bid {bid_uri} already deleted from PCSP')
+            deleted = True
     else:
         db_logger.debug(f'Storing deleted bid {bid_uri}')
     return deleted
+
+
+def new_bid(bid_uri, bid_metadata, items_in_database):
+    stored_bids = items_in_database['bids']['bid_uri']  # List of stored bids
+    if bid_uri in stored_bids:
+        bid_metadata['storage_mode'] = 'update'
+        return False
+    else:
+        bid_metadata['storage_mode'] = 'new'
+        return True
+
+
+def more_recent_bid(bid_uri, last_updated, offset, bid_metadata, items_in_database):
+    stored_bids = items_in_database['bids']['bid_uri']  # List of stored bids
+    stored_last_updates = items_in_database['bids']['last_updated']  # List of update times
+    stored_last_update_offsets = items_in_database['bids']['last_updated_offset']  # List of update offsets
+    if bid_uri in stored_bids:
+        index = stored_bids.index(bid_uri)
+        stored_last_update = str(stored_last_updates[index])
+        stored_offset = stored_last_update_offsets[index]
+        bid_metadata['storage_mode'] = 'update'
+        if stored_offset is None:
+            return True
+        else:
+            if stored_offset != offset:  # If different offsets, transform times to UTC
+                hours, minutes = offset.split(':')
+                stored_hours, stored_minutes = stored_offset.split(':')
+                hours = int(hours)
+                stored_hours = int(stored_hours)
+                minutes = int(minutes)
+                stored_minutes = int(stored_minutes)
+                last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S") - timedelta(hours=hours,
+                                                                                               minutes=minutes)
+                stored_last_update = datetime.strptime(stored_last_update, "%Y-%m-%d %H:%M:%S") - timedelta(
+                    hours=stored_hours, minutes=stored_minutes)
+            else:
+                last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S")
+                stored_last_update = datetime.strptime(stored_last_update, "%Y-%m-%d %H:%M:%S")
+            if last_update > stored_last_update:
+                db_logger.debug(f'Bid {bid_uri} is more recent than stored entry. Updating bid...')
+                return True
+    else:
+        bid_metadata['storage_mode'] = 'new'
+        return False
 
 
 def is_new_or_update(bid_uri, last_update, offset, bid_metadata, items_in_database):
@@ -344,4 +388,3 @@ def get_db_bid_info():
     for field in fields:
         table_dict[field] = table_df[field].tolist()
     return table_dict
-
