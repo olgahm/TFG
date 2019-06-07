@@ -52,21 +52,20 @@ def zip_processing(url):
     db_logger.debug(f'Start processing zip file {url}')
     response = requests.get(url)
     db_logger.debug('Loading bid and organization information from database...')
-    data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
-    gc_info = dict()
+    crawled_urls = dict()
+    bid_info_db = get_db_bid_info()
     with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
         for zipinfo in reversed(zip_file.infolist()):
             with zip_file.open(zipinfo) as atom_file:
                 bids_xml = etree.parse(atom_file)
                 root = clean_elements(bids_xml.getroot())
-                pseudo_manager = [data, gc_info]
-                process_xml_atom(root, pseudo_manager)
+                bid_info_db, crawled_urls = process_xml_atom(root, bid_info_db, crawled_urls)
     db_logger.debug(f'Finished processing zip file {url}')
     with open(os.path.join(DB_GEN_PATH, 'processed_zips.txt'), 'a') as f:
         f.write(f'{url}\n')
 
 
-def atom_url_processing(url, pseudo_manager=None):
+def atom_url_processing(url, bid_info_db=None, crawled_urls=None):
     """Function to get bids for current month
 
     :param url: URL to scrape
@@ -85,10 +84,11 @@ def atom_url_processing(url, pseudo_manager=None):
     # processed as historic atom file
     this_month = datetime.now().month
     next_atom_date = re.search('_(\d{8})_{0,1}', next_link)
-    if pseudo_manager is None:
+    if bid_info_db is None and crawled_urls is None:
         db_logger.debug('Loading bid and organization information from database...')
-        pseudo_manager = [{'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}, dict()]
-    process_xml_atom(root, pseudo_manager)
+        crawled_urls = dict()
+        bid_info_db = get_db_bid_info()
+    bid_info_db, crawled_urls = process_xml_atom(root, bid_info_db, crawled_urls)
     if next_atom_date is not None:
         if int(next_atom_date.group(1)[4:6]) == this_month:
-            atom_url_processing(next_link, pseudo_manager)
+            atom_url_processing(next_link, bid_info_db, crawled_urls)

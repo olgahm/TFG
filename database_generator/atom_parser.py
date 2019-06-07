@@ -3,7 +3,7 @@ import requests
 import re
 import iso8601
 import pytz
-from database_generator.db_helpers import is_stored
+# from database_generator.db_helpers import is_stored
 from database_generator.db_helpers import get_data_from_table
 from database_generator.db_helpers import get_db_bid_info
 from database_generator.db_helpers import new_bid, more_recent_bid
@@ -36,7 +36,7 @@ bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "de
 doc_schema = {"doc_id": None, "doc_url": None, "bid_id": None, "doc_type": None, "doc_hash": None}
 org_schema = {"nombre": None, "tipo_organismo": None, "uri": None, "id": None, "direccion": None, "cp": None,
               "ciudad": None, "pais": None, "nombre_contacto": None, "telefono_contacto": None, "fax_contacto": None,
-              "email_contacto": None, "razon_social": None}
+              "email_contacto": None, "razon_social": None, "bid_id": None}
 
 event_schema = {"bid_id": None, "tipo": None, "id_evento": None, "descripcion": None, "lugar": None, "direccion": None,
                 "cp": None, "ciudad": None, "pais": None, "fecha": None}
@@ -73,9 +73,7 @@ def get_next_link(root):
     return next_link, root
 
 
-def process_xml_atom(root, manager):
-    stored_data = manager[0]
-    gc_dict = manager[1]
+def process_xml_atom(root, bid_info_db, crawled_urls):
     bids_to_database = list()
     orgs_to_database = list()
     mods_to_database = list()
@@ -111,7 +109,7 @@ def process_xml_atom(root, manager):
         bid_metadata['bid_uri'] = bid_uri
         bid_metadata['deleted_at'] = deletion_date
         bid_metadata['deleted_at_offset'] = offset
-        if not deleted_bid(bid_uri, bid_metadata, stored_data):
+        if not deleted_bid(bid_uri, bid_metadata, bid_info_db):
             bids_to_database.append(bid_metadata)
     for entry in root.iterfind('entry'):
         bid_metadata = bid_schema.copy()
@@ -119,11 +117,11 @@ def process_xml_atom(root, manager):
         bid_uri = entry.find('id').text  # Unique ID
         last_updated = entry.find('updated').text
         last_updated, offset = parse_rfc3339_time(last_updated)
-        if not new_bid(bid_uri, bid_metadata, stored_data):
-            bid_index = stored_data['bids']['bid_uri'].index(bid_uri)
-            stored_last_updated = stored_data['bids']['last_updated'][bid_index]
-            stored_offset = stored_data['bids']['last_updated_offset'][bid_index]
-            if not more_recent_bid(bid_uri, last_updated, offset, stored_last_updated, stored_offset, bid_metadata):
+        if not new_bid(bid_uri, bid_metadata, bid_info_db):
+            bid_index = bid_info_db['bid_uri'].index(bid_uri)
+            stored_last_updated = bid_info_db['last_updated'][bid_index]
+            stored_offset = bid_info_db['last_updated_offset'][bid_index]
+            if not more_recent_bid(bid_uri, last_updated, offset, stored_last_updated, stored_offset):
                 continue
         bid_metadata['bid_uri'] = bid_uri
         bid_metadata['title'] = entry.find('title').text
@@ -138,7 +136,7 @@ def process_xml_atom(root, manager):
         code = bid_status.text
         url_bid_status = bid_status.attrib['listURI']
         if url_bid_status:
-            status_dict = code_mapper(url_bid_status, gc_dict)
+            status_dict = code_mapper(url_bid_status, crawled_urls)
             bid_metadata['bid_status'] = status_dict.get(code, code)
         # ID EXPEDIENTE (1)
         id_expediente = status.find('ContractFolderID')
@@ -184,7 +182,7 @@ def process_xml_atom(root, manager):
                 cpv_metadata['code'] = cpv_code
                 url_cpv_code = code_element.attrib['listURI']
                 if url_cpv_code:
-                    code_dict = code_mapper(url_cpv_code, gc_dict)
+                    code_dict = code_mapper(url_cpv_code, crawled_urls)
                     cpv_metadata['code_description'] = code_dict.get(cpv_code, '')
                 bid_cpvs_to_database.append(cpv_metadata)
             ## TIPO DE CONTRATO (0-1)
@@ -193,7 +191,7 @@ def process_xml_atom(root, manager):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, gc_dict)
+                    type_dict = code_mapper(url_bid_type, crawled_urls)
                     bid_metadata['tipo_contrato'] = type_dict.get(type, type)
             ## SUBTIPO DE CONTRATO (0-1)
             subtype_element = procurement_project.find('SubTypeCode')
@@ -201,7 +199,7 @@ def process_xml_atom(root, manager):
                 code = subtype_element.text
                 url_code = subtype_element.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, gc_dict)
+                    code_dict = code_mapper(url_code, crawled_urls)
                     bid_metadata['subtipo_contrato'] = code_dict.get(code, '')
             ## EXTENSION DEL CONTRATO
             for contract_extension in procurement_project.iterfind('ContractExtension'):
@@ -222,7 +220,7 @@ def process_xml_atom(root, manager):
                     county = county_element.text
                     url_bid_county = county_element.attrib['listURI']
                     if url_bid_county:
-                        county_dict = code_mapper(url_bid_county, gc_dict)
+                        county_dict = code_mapper(url_bid_county, crawled_urls)
                         bid_metadata['comunidad_ejecucion'] = county_dict.get(county, county)
                 address = location.find('Address')
                 if address is not None:
@@ -237,7 +235,7 @@ def process_xml_atom(root, manager):
                         code = country.text
                         url_codes = country.attrib['listURI']
                         if url_codes:
-                            code_dict = code_mapper(url_codes, gc_dict)
+                            code_dict = code_mapper(url_codes, crawled_urls)
                             bid_metadata['pais_ejecucion'] = code_dict.get(code, code)
         # DOCUMENTOS: Van en otra base de datos (1 licitación - N documentos)
         ## PLIEGO ADMINISTRATIVO (0-1)
@@ -303,7 +301,7 @@ def process_xml_atom(root, manager):
                 cpv_metadata['code'] = cpv_code
                 url_cpv_code = code_element.attrib['listURI']
                 if url_cpv_code:
-                    code_dict = code_mapper(url_cpv_code, gc_dict)
+                    code_dict = code_mapper(url_cpv_code, crawled_urls)
                     cpv_metadata['code_description'] = code_dict.get(cpv_code, '')
                 lot_cpvs_to_database.append(cpv_metadata)
             lots_to_database.append(lot_metadata)
@@ -317,7 +315,7 @@ def process_xml_atom(root, manager):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, gc_dict)
+                    type_dict = code_mapper(url_bid_type, crawled_urls)
                     bid_metadata['tipo_procedimiento'] = type_dict.get(type, type)
             ## SISTEMA DE CONTRATACION
             type_element = tendering_process.find('ContractingSystemCode')
@@ -325,7 +323,7 @@ def process_xml_atom(root, manager):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, gc_dict)
+                    type_dict = code_mapper(url_bid_type, crawled_urls)
                     bid_metadata['sistema_contratacion'] = type_dict.get(type, type)
             ## TIPO DE TRAMITACION
             type_element = tendering_process.find('UrgencyCode')
@@ -333,7 +331,7 @@ def process_xml_atom(root, manager):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, gc_dict)
+                    type_dict = code_mapper(url_bid_type, crawled_urls)
                     bid_metadata['tipo_tramitacion'] = type_dict.get(type, type)
             ## PRESENTACION DE LA OFERTA
             type_element = tendering_process.find('SubmissionMethodCode')
@@ -341,7 +339,7 @@ def process_xml_atom(root, manager):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, gc_dict)
+                    type_dict = code_mapper(url_bid_type, crawled_urls)
                     bid_metadata['presentacion_oferta'] = type_dict.get(type, type)
             ## PLAZO DE PLIEGOS
             plazo_pliego = tendering_process.find('DocumentAvailabilityPeriod')
@@ -369,7 +367,7 @@ def process_xml_atom(root, manager):
                     type = event_type.text
                     url_event_type = event_type.attrib['listURI']
                     if url_event_type:
-                        type_dict = code_mapper(url_event_type, gc_dict)
+                        type_dict = code_mapper(url_event_type, crawled_urls)
                         event_metadata['tipo'] = type_dict.get(type, type)
                 event_id = evento_element.find('IdentificationID')
                 if event_id is not None:
@@ -402,7 +400,7 @@ def process_xml_atom(root, manager):
                             country_code = country.text
                             url_country_code = country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, gc_dict)
+                                code_dict = code_mapper(url_country_code, crawled_urls)
                                 event_metadata['pais'] = code_dict.get(country_code, country_code)
                 events_to_database.append(event_metadata)
 
@@ -429,7 +427,7 @@ def process_xml_atom(root, manager):
                     code = reason_code.text
                     url_code = reason_code.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, gc_dict)
+                        code_dict = code_mapper(url_code, crawled_urls)
                         bid_metadata['codigo_justificacion_proceso_extraordinario'] = code_dict.get(code, code)
                 description = justification.find('Description')
                 if description is not None:
@@ -445,6 +443,7 @@ def process_xml_atom(root, manager):
             provider_element = tendering_terms.find('DocumentProviderParty')
             if provider_element is not None:
                 org_metadata = org_schema.copy()
+                org_metadata['bid_id'] = bid_metadata['bid_uri']
                 provider_name = provider_element.find('PartyName/Name')
                 org_metadata['nombre'] = unidecode(provider_name).strip()
                 bid_metadata['proveedor_pliegos'] = provider_name
@@ -467,7 +466,7 @@ def process_xml_atom(root, manager):
                         country_code = provider_country.text
                         url_country_code = provider_country.attrib['listURI']
                         if url_country_code:
-                            code_dict = code_mapper(url_country_code, gc_dict)
+                            code_dict = code_mapper(url_country_code, crawled_urls)
                             org_metadata['pais'] = code_dict.get(country_code, country_code)
                 provider_contact_info = provider_element.find('Contact')
                 if provider_contact_info is not None:
@@ -483,12 +482,12 @@ def process_xml_atom(root, manager):
                         org_metadata['fax_contacto'] = provider_fax.text
                     if provider_email is not None:
                         org_metadata['email_contacto'] = provider_email.text
-                if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-                    orgs_to_database.append(org_metadata)
+                orgs_to_database.append(org_metadata)
             ## LUGAR RECEPCION OFERTAS
             receiving_element = tendering_terms.find('TenderRecipientParty')
             if receiving_element is not None:
                 org_metadata = org_schema.copy()
+                org_metadata['bid_id'] = bid_metadata['bid_uri']
                 receiving_name = receiving_element.find('PartyName/Name')
                 org_metadata['nombre'] = unidecode(receiving_name).strip()
                 bid_metadata['receptor_ofertas'] = receiving_name
@@ -511,7 +510,7 @@ def process_xml_atom(root, manager):
                         country_code = receiving_country.text
                         url_country_code = receiving_country.attrib['listURI']
                         if url_country_code:
-                            code_dict = code_mapper(url_country_code, gc_dict)
+                            code_dict = code_mapper(url_country_code, crawled_urls)
                             org_metadata['pais'] = code_dict.get(country_code, country_code)
                 receiving_contact_info = receiving_element.find('Contact')
                 if receiving_contact_info is not None:
@@ -527,13 +526,13 @@ def process_xml_atom(root, manager):
                         org_metadata['fax_contacto'] = receiving_fax.text
                     if receiving_email is not None:
                         org_metadata['email_contacto'] = receiving_email.text
-                if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-                    orgs_to_database.append(org_metadata)
+                orgs_to_database.append(org_metadata)
 
             ## PROVEEDOR DE INFORMACION ADICIONAL
             provider_element = tendering_terms.find('AdditionalInformationParty')
             if provider_element is not None:
                 org_metadata = org_schema.copy()
+                org_metadata['bid_id'] = bid_metadata['bid_uri']
                 provider_name = provider_element.find('PartyName/Name')
                 org_metadata['nombre'] = unidecode(provider_name).strip()
                 bid_metadata['proveedor_informacion_adicional'] = provider_name
@@ -556,7 +555,7 @@ def process_xml_atom(root, manager):
                         country_code = provider_country.text
                         url_country_code = provider_country.attrib['listURI']
                         if url_country_code:
-                            code_dict = code_mapper(url_country_code, gc_dict)
+                            code_dict = code_mapper(url_country_code, crawled_urls)
                             org_metadata['pais'] = code_dict.get(country_code, country_code)
                 provider_contact_info = provider_element.find('Contact')
                 if provider_contact_info is not None:
@@ -572,8 +571,7 @@ def process_xml_atom(root, manager):
                         org_metadata['fax_contacto'] = provider_fax.text
                     if provider_email is not None:
                         org_metadata['email_contacto'] = provider_email.text
-                if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-                    orgs_to_database.append(org_metadata)
+                orgs_to_database.append(org_metadata)
 
             ## APPEAL TERMS
             appeal_terms = tendering_terms.find('AppealTerms')
@@ -582,6 +580,7 @@ def process_xml_atom(root, manager):
                 resource_info_element = appeal_terms.find('AppealInformationParty')
                 if resource_info_element is not None:
                     org_metadata = org_schema.copy()
+                    org_metadata['bid_id'] = bid_metadata['bid_uri']
                     resource_name = resource_info_element.find('PartyName/Name')
                     org_metadata['nombre'] = unidecode(resource_name).strip()
                     bid_metadata['info_recursos'] = resource_name
@@ -604,7 +603,7 @@ def process_xml_atom(root, manager):
                             country_code = resource_country.text
                             url_country_code = resource_country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, gc_dict)
+                                code_dict = code_mapper(url_country_code, crawled_urls)
                                 org_metadata['pais'] = code_dict.get(country_code, country_code)
                     resource_contact_info = resource_info_element.find('Contact')
                     if resource_contact_info is not None:
@@ -620,13 +619,13 @@ def process_xml_atom(root, manager):
                             org_metadata['fax_contacto'] = resource_fax.text
                         if resource_email is not None:
                             org_metadata['email_contacto'] = resource_email.text
-                    if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-                        orgs_to_database.append(org_metadata)
+                    orgs_to_database.append(org_metadata)
 
                 ### LUGAR DE PRESENTACION DE RECURSOS
                 resource_presentation_element = appeal_terms.find('AppealReceiverParty')
                 if resource_presentation_element is not None:
                     org_metadata = org_schema.copy()
+                    org_metadata['bid_id'] = bid_metadata['bid_uri']
                     resource_name = resource_presentation_element.find('PartyName/Name')
                     org_metadata['nombre'] = unidecode(resource_name).strip()
                     bid_metadata['receptor_recursos'] = resource_name
@@ -649,7 +648,7 @@ def process_xml_atom(root, manager):
                             country_code = resource_country.text
                             url_country_code = resource_country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, gc_dict)
+                                code_dict = code_mapper(url_country_code, crawled_urls)
                                 org_metadata['pais'] = code_dict.get(country_code, country_code)
                     resource_contact_info = resource_presentation_element.find('Contact')
                     if resource_contact_info is not None:
@@ -665,8 +664,7 @@ def process_xml_atom(root, manager):
                             org_metadata['fax_contacto'] = resource_fax.text
                         if resource_email is not None:
                             org_metadata['email_contacto'] = resource_email.text
-                    if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-                        orgs_to_database.append(org_metadata)
+                    orgs_to_database.append(org_metadata)
 
                 ### FECHA LIMITE DE PRESENTACION DE RECURSOS
                 presentation_period_element = appeal_terms.find('PresentationPeriod')
@@ -679,6 +677,7 @@ def process_xml_atom(root, manager):
                 mediation_element = appeal_terms.find('AppealReceiverParty')
                 if mediation_element is not None:
                     org_metadata = org_schema.copy()
+                    org_metadata['bid_id'] = bid_metadata['bid_uri']
                     mediation_name = mediation_element.find('PartyName/Name')
                     org_metadata['nombre'] = unidecode(mediation_name).strip()
                     bid_metadata['organo_mediador'] = mediation_name
@@ -701,7 +700,7 @@ def process_xml_atom(root, manager):
                             country_code = mediation_country.text
                             url_country_code = mediation_country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, gc_dict)
+                                code_dict = code_mapper(url_country_code, crawled_urls)
                                 org_metadata['pais'] = code_dict.get(country_code, country_code)
                     mediation_contact_info = mediation_element.find('Contact')
                     if mediation_contact_info is not None:
@@ -717,8 +716,7 @@ def process_xml_atom(root, manager):
                             org_metadata['fax_contacto'] = mediation_fax.text
                         if mediation_email is not None:
                             org_metadata['email_contacto'] = mediation_email.text
-                    if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-                        orgs_to_database.append(org_metadata)
+                    orgs_to_database.append(org_metadata)
 
             ## CURRICULUM REQUERIDO
             required_curriculum = tendering_terms.find('RequiredCurriculaIndicator')
@@ -740,7 +738,7 @@ def process_xml_atom(root, manager):
                 code = funding_program_code.text
                 url_code = funding_program_code.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, gc_dict)
+                    code_dict = code_mapper(url_code, crawled_urls)
                     funding_program_text = code_dict.get(code, code)
             if funding_program is not None:
                 funding_program_text += f' {funding_program.text}'
@@ -755,7 +753,7 @@ def process_xml_atom(root, manager):
                     code = guarantee_type.text
                     url_code = guarantee_type.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, gc_dict)
+                        code_dict = code_mapper(url_code, crawled_urls)
                         guarantee_metadata['tipo_garantia'] = code_dict.get(code, code)
                 guarantee_amount = guarantee_element.find('LiabilityAmount')
                 if guarantee_amount is not None:
@@ -796,7 +794,7 @@ def process_xml_atom(root, manager):
                     code = condition.text
                     url_code = condition.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, gc_dict)
+                        code_dict = code_mapper(url_code, crawled_urls)
                         cond_metadata['condicion'] = code_dict.get(code, code)
                     admission_conditions_to_database.append(cond_metadata)
 
@@ -810,7 +808,7 @@ def process_xml_atom(root, manager):
                         code = criteria_code.text
                         url_code = criteria_code.attrib['listURI']
                         if url_code:
-                            code_dict = code_mapper(url_code, gc_dict)
+                            code_dict = code_mapper(url_code, crawled_urls)
                             crit_metadata['codigo_criterio'] = code_dict.get(code, code)
                     criteria_description = tech_criteria.find('Description')
                     if criteria_description is not None:
@@ -826,7 +824,7 @@ def process_xml_atom(root, manager):
                         code = criteria_code.text
                         url_code = criteria_code.attrib['listURI']
                         if url_code:
-                            code_dict = code_mapper(url_code, gc_dict)
+                            code_dict = code_mapper(url_code, crawled_urls)
                             crit_metadata['codigo_criterio'] = code_dict.get(code, code)
                     criteria_description = finantial_criteria.find('Description')
                     if criteria_description is not None:
@@ -853,7 +851,7 @@ def process_xml_atom(root, manager):
                     code = envelope_type.text
                     url_code = envelope_type.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, gc_dict)
+                        code_dict = code_mapper(url_code, crawled_urls)
                         bid_metadata['tipo_documento_sobre'] = code_dict.get(code, code)
                 envelope_description = tender_preparation.find('Description')
                 if envelope_description is not None:
@@ -879,20 +877,20 @@ def process_xml_atom(root, manager):
                 code = code_element.text
                 url_code = code_element.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, gc_dict)
+                    code_dict = code_mapper(url_code, crawled_urls)
                     ## ESTADO FINAL ADJUDIACION
                     winner_metadata['resultado'] = code_dict.get(code, code)
             ## ADJUDICATARIO
             winner = result.find('WinningParty')
             if winner is not None:
                 org_metadata = org_schema.copy()
+                org_metadata['bid_id'] = bid_metadata['bid_uri']
                 winner_metadata['adjudicatario'] = unidecode(winner.find('PartyName/Name').text).strip()
                 org_metadata['nombre'] = unidecode(winner_metadata['adjudicatario']).strip()
                 winner_id = winner.find('PartyIdentification/ID')
                 org_metadata['id'] = winner_id.text
                 org_metadata['razon_social'] = winner_id.attrib['schemeName']
-                if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-                    orgs_to_database.append(org_metadata)
+                orgs_to_database.append(org_metadata)
             awarded_tendered_project = result.find('AwardedTenderedProject')
             if awarded_tendered_project is not None:
                 ### IMPORTE ADJUDICACION
@@ -954,6 +952,7 @@ def process_xml_atom(root, manager):
             winners_to_database.append(winner_metadata)
         # ORGANO DE CONTRATACION
         org_metadata = org_schema.copy()
+        org_metadata['bid_id'] = bid_metadata['bid_uri']
         located_contracting_party = status.find('LocatedContractingParty')
         upper_levels = str()
         org_element = located_contracting_party.find('Party')
@@ -972,7 +971,7 @@ def process_xml_atom(root, manager):
             code = org_type_code.text
             url_code = org_type_code.attrib['listURI']
             if url_code:
-                code_dict = code_mapper(url_code, gc_dict)
+                code_dict = code_mapper(url_code, crawled_urls)
                 org_metadata['tipo_organismo'] = code_dict.get(code, code)
         org_addr_info = org_element.find('PostalAddress')
         if org_addr_info is not None:
@@ -990,7 +989,7 @@ def process_xml_atom(root, manager):
                 country_code = org_country.text
                 url_country_code = org_country.attrib['listURI']
                 if url_country_code:
-                    code_dict = code_mapper(url_country_code, gc_dict)
+                    code_dict = code_mapper(url_country_code, crawled_urls)
                     org_metadata['pais'] = code_dict.get(country_code, country_code)
         org_contact_info = org_element.find('Contact')
         if org_contact_info is not None:
@@ -1006,8 +1005,7 @@ def process_xml_atom(root, manager):
                 org_metadata['fax_contacto'] = org_fax.text
             if org_email is not None:
                 org_metadata['email_contacto'] = org_email.text
-        if not is_stored('orgs', org_metadata, bid_metadata['storage_mode'], stored_data):
-            orgs_to_database.append(org_metadata)
+        orgs_to_database.append(org_metadata)
         hiera_element = located_contracting_party.find('ParentLocatedParty')
         if hiera_element is not None:
             upper_levels = iterate_parent_contractor(hiera_element)
@@ -1055,7 +1053,7 @@ def process_xml_atom(root, manager):
                 code = add_type.text
                 url_code = add_type.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, gc_dict)
+                    code_dict = code_mapper(url_code, crawled_urls)
                     medium_metadata['tipo_anuncio'] = code_dict.get(code, code)
             ## Puede haber varios medios de publicacion para un mismo tipo de anuncio
             for pub_status in medium.iterfind('AdditionalPublicationStatus'):
@@ -1096,37 +1094,31 @@ def process_xml_atom(root, manager):
         item_to_database(ev_criteria_to_database, 'evaluation_criteria')
     if publications_to_database:
         item_to_database(publications_to_database, 'publications')
-    data = None
     if orgs_to_database:
-        orgs_to_database = clean_org_list(orgs_to_database)
-        db_logger.debug('Storing or updating organizations in database...')
-        data = item_to_database(orgs_to_database, 'orgs')
+        item_to_database(orgs_to_database, 'orgs')
     if bids_to_database:
         bids_to_database = clean_bid_list(bids_to_database)
         item_to_database(bids_to_database, 'bids')
         db_logger.debug('Reloading bid and organization information from database...')
         print('Updating bids')
-        stored_data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
-    manager[0] = stored_data
-    manager[1] = gc_dict
-
-def clean_org_list(orgs_to_database):
-    pass
+        bid_info_db = get_db_bid_info()
+    return bid_info_db, crawled_urls
 
 
 def clean_bid_list(bids_to_database):
     db_logger.debug('Storing or updating bids in database...')
     # Order bid list by last update, keeping deleted bids first
     deleted_bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is None]
-    bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is not None]
-    bids_to_db = sorted(bids_to_db, key=lambda x: datetime.strptime(x['last_updated'], "%Y-%m-%d "
-                                                                                       "%H:%M:%S"), reverse=True)
-    bid_ids = Counter([bid['bid_uri'] for bid in bids_to_db])
-    bids_to_database = list()
-    for bid_id in bid_ids:
-        counter = bid_ids[bid_id]
+    actual_bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is not None]
+    actual_bids_to_db = sorted(actual_bids_to_db, key=lambda x: datetime.strptime(x['last_updated'], "%Y-%m-%d "
+                                                                                                     "%H:%M:%S"),
+                               reverse=True)
+    bid_counter = Counter([bid['bid_uri'] for bid in actual_bids_to_db])
+    bids_to_db = list()
+    for bid_id in bid_counter:
+        counter = bid_counter[bid_id]
         if counter > 1:
-            bids = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id]
+            bids = [bid for bid in actual_bids_to_db if bid['bid_uri'] == bid_id]
             # The bid list is ordered by date, so the first element will be the most recent one
             most_recent = bids[0]
             if any([bid['storage_mode'] == 'new' for bid in bids]):
@@ -1134,32 +1126,33 @@ def clean_bid_list(bids_to_database):
             else:
                 most_recent['storage_mode'] = 'update'
         else:
-            most_recent = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id][0]
-        bids_to_database.append(most_recent)
-        print(len(bids_to_database))
-    bids_to_db = deleted_bids_to_db + bids_to_database  # Possition deletion date before so that it is always the first value
-    bids_to_database = list()
-    bid_ids = Counter(bid['bid_uri'] for bid in bids_to_database)
-    for bid_id in bid_ids:
-        counter = bid_ids[bid_id]
+            most_recent = [bid for bid in actual_bids_to_db if bid['bid_uri'] == bid_id][0]
+        bids_to_db.append(most_recent)
+    bid_counter = Counter(bid['bid_uri'] for bid in bids_to_db)
+    if any([bid_counter[counter] > 1 for counter in bid_counter]):
+        print('Problem')
+    all_bids_to_db = deleted_bids_to_db + bids_to_db  # Possition deletion date before so that it is always the
+    # first value
+    bid_counter = Counter(bid['bid_uri'] for bid in all_bids_to_db)
+    bids_to_db = list()
+    for bid_id in bid_counter:
+        counter = bid_counter[bid_id]
         if counter > 1:
-            bids = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id]
-            print(bids)
+            bids = [bid for bid in all_bids_to_db if bid['bid_uri'] == bid_id]
             del_bid = {k: v for k, v in bids[0].items() if v is not None}
-            print(del_bid)
             actual_bid = bids[1]
-            print(actual_bid)
             most_recent = {**actual_bid, **del_bid}
-            print(most_recent)
-            sys.exit(0)
             if any([bid['storage_mode'] == 'new' for bid in bids]):
                 most_recent['storage_mode'] = 'new'
             else:
                 most_recent['storage_mode'] = 'update'
         else:
-            most_recent = [bid for bid in bids_to_db if bid['bid_uri'] == bid_id][0]
-        bids_to_database.append(most_recent)
-    return bids_to_database
+            most_recent = [bid for bid in all_bids_to_db if bid['bid_uri'] == bid_id][0]
+        bids_to_db.append(most_recent)
+    bid_counter = Counter(bid['bid_uri'] for bid in bids_to_db)
+    if any([bid_counter[counter] > 1 for counter in bid_counter]):
+        print('Problem')
+    return bids_to_db
 
 
 def parse_rfc3339_time(date):

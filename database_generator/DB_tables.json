@@ -85,7 +85,7 @@
     }
   },
   "orgs": {
-    "primary_key": "nombre",
+    "primary_key": null,
     "fields": {
       "TEXT": [
         "nombre",
@@ -100,7 +100,8 @@
         "telefono_contacto",
         "fax_contacto",
         "email_contacto",
-        "razon_social"
+        "razon_social",
+        "bid_id"
       ]
     }
   },

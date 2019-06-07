@@ -20,6 +20,5 @@ import os
 #     dictionary = corpora.Dictionary(preprocessed_corpus)
 #     # Importante comprender la info que da esto
 #     corpus_bow = [dictionary.doc2bow(doc) for doc in preprocessed_corpus]
-#     tfidf_model = models.TfidfModel(corpus_bow)
-#     corpus_tfidf = tfidf_model[corpus_bow]
+
 #     pass
