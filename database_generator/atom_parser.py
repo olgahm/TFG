@@ -4,8 +4,7 @@ import re
 import iso8601
 import pytz
 # from database_generator.db_helpers import is_stored
-from database_generator.db_helpers import get_data_from_table
-from database_generator.db_helpers import get_db_bid_info
+# from database_generator.db_helpers import get_data_from_table
 from database_generator.db_helpers import new_bid, more_recent_bid
 from database_generator.db_helpers import deleted_bid
 from database_generator.db_helpers import item_to_database
@@ -73,7 +72,7 @@ def get_next_link(root):
     return next_link, root
 
 
-def process_xml_atom(root, bid_info_db, crawled_urls):
+def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
     bids_to_database = list()
     orgs_to_database = list()
     mods_to_database = list()
@@ -1067,42 +1066,60 @@ def process_xml_atom(root, bid_info_db, crawled_urls):
                     publications_to_database.append(copy2_pub_metadata)
         bids_to_database.append(bid_metadata)
     if mods_to_database:
-        item_to_database(mods_to_database, 'contract_mods')
+        item_to_database(db_conn, mods_to_database, 'contract_mods')
     if winners_to_database:
-        item_to_database(winners_to_database, 'winners')
+        item_to_database(db_conn, winners_to_database, 'winners')
     if awarding_conditions_to_database:
-        item_to_database(awarding_conditions_to_database, "awarding_conditions")
+        item_to_database(db_conn, awarding_conditions_to_database, "awarding_conditions")
     if bid_cpvs_to_database:
-        item_to_database(bid_cpvs_to_database, 'bid_cpv_codes')
+        item_to_database(db_conn, bid_cpvs_to_database, 'bid_cpv_codes')
     if contract_extensions_to_database:
-        item_to_database(contract_extensions_to_database, 'contract_extensions')
+        item_to_database(db_conn, contract_extensions_to_database, 'contract_extensions')
     if docs_to_database:
-        item_to_database(docs_to_database, 'docs')
+        item_to_database(db_conn, docs_to_database, 'docs')
     if lot_cpvs_to_database:
-        item_to_database(lot_cpvs_to_database, 'lot_cpv_codes')
+        item_to_database(db_conn, lot_cpvs_to_database, 'lot_cpv_codes')
     if lots_to_database:
-        item_to_database(lots_to_database, 'lots')
+        item_to_database(db_conn, lots_to_database, 'lots')
     if events_to_database:
-        item_to_database(events_to_database, 'events')
+        item_to_database(db_conn, events_to_database, 'events')
     if guarantees_to_database:
-        item_to_database(guarantees_to_database, 'required_guarantees')
+        item_to_database(db_conn, guarantees_to_database, 'required_guarantees')
     if bussiness_class_to_database:
-        item_to_database(bussiness_class_to_database, 'required_business_classifications')
+        item_to_database(db_conn, bussiness_class_to_database, 'required_business_classifications')
     if admission_conditions_to_database:
-        item_to_database(admission_conditions_to_database, 'admission_conditions')
+        item_to_database(db_conn, admission_conditions_to_database, 'admission_conditions')
     if ev_criteria_to_database:
-        item_to_database(ev_criteria_to_database, 'evaluation_criteria')
+        item_to_database(db_conn, ev_criteria_to_database, 'evaluation_criteria')
     if publications_to_database:
-        item_to_database(publications_to_database, 'publications')
+        item_to_database(db_conn, publications_to_database, 'publications')
     if orgs_to_database:
-        item_to_database(orgs_to_database, 'orgs')
+        item_to_database(db_conn, orgs_to_database, 'orgs')
     if bids_to_database:
         bids_to_database = clean_bid_list(bids_to_database)
-        item_to_database(bids_to_database, 'bids')
+        item_to_database(db_conn, bids_to_database, 'bids')
         db_logger.debug('Reloading bid and organization information from database...')
         print('Updating bids')
-        bid_info_db = get_db_bid_info()
+        # lock.acquire()
+        bid_info_db = update_bid_info_db(bids_to_database, bid_info_db)  # lock.release()
     return bid_info_db, crawled_urls
+
+
+def update_bid_info_db(inserted_bids, bid_info_db):
+    for bid in inserted_bids:
+        if bid['bid_uri'] in bid_info_db['bid_uri']:
+            bid_index = bid_info_db['bid_uri'].index(bid['bid_uri'])
+            if bid['last_updated'] is not None:
+                bid_info_db['last_updated'][bid_index] = bid['last_updated']
+                bid_info_db['last_updated_offset'][bid_index] = bid['last_updated_offset']
+            if bid['deleted_at_offset'] is not None:
+                bid_info_db['deleted_at_offset'][bid_index] = bid['deleted_at_offset']
+        else:
+            bid_info_db['bid_uri'].append(bid['bid_uri'])
+            bid_info_db['last_updated'].append(bid['last_updated'])
+            bid_info_db['last_updated_offset'].append(bid['last_updated_offset'])
+            bid_info_db['deleted_at_offset'].append(bid['deleted_at_offset'])
+    return bid_info_db
 
 
 def clean_bid_list(bids_to_database):

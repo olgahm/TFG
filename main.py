@@ -14,13 +14,15 @@ import re
 
 from config import get_db_connection
 from database_generator.bid_crawler import get_urls_to_crawl
-from database_generator.bid_crawler import process_url
+from database_generator.bid_crawler import start_crawl
 from database_generator.doc_parser import store_document_text
 from database_generator.db_helpers import get_all_table_names
 from database_generator.db_helpers import get_mandatory_keys
 from database_generator.db_helpers import get_primary_key
-from database_generator.db_helpers import remove_duplicates
 # from topic_model.model_generator import model_generator
+from database_generator.db_helpers import remove_duplicates
+
+from threading import Thread, Lock
 
 actions = {'1': 'update_database()', '2': 'extract_text_from_docs()', '3': 'reconstruct_database()',
            '4': 'generate_model()', '0': 'exit()'}
@@ -98,11 +100,24 @@ def generate_model():
 
 
 def update_database():
-    urls = get_urls_to_crawl()
-    # pool = Pool(1)
-    # pool.map(process_url, urls)
-    for url in urls:
-        process_url(url)
+    urls_pcsp, urls_not_pcsp, urls_minor_contracts = get_urls_to_crawl()
+
+    lock = Lock()
+    t1 = Thread(target=start_crawl, args=(urls_pcsp, lock))
+    t2 = Thread(target=start_crawl, args=(urls_not_pcsp, lock))
+    t3 = Thread(target=start_crawl, args=(urls_minor_contracts, lock))
+
+    t1.start()
+    t2.start()
+    t3.start()
+
+    t1.join()
+    t2.join()
+    t3.join()
+    # pool = Pool()
+    # pool.map(start_crawl, urls_pcsp + urls_minor_contracts + urls_not_pcsp)
+    # for url in urls:
+    #     process_url(url)
     print('Finished')
     remove_duplicates()
     # extract_text_from_docs()

@@ -630,3 +630,24 @@ class BaseDMsql(object):
             df.to_excel(fpath, engine='xlsxwriter')
 
         return
+
+    def execute_command(self, cmd):
+        self._c.execute(cmd)
+        self._conn.commit()
+
+    def get_db_bid_info(self):
+        table_df = self.readDBtable(tablename='bids', selectOptions='bid_uri, deleted_at_offset, '
+                                                                    'last_updated_offset, last_updated')
+        table_dict = dict()
+        fields = list(table_df)
+        for field in fields:
+            table_dict[field] = table_df[field].tolist()
+        return table_dict
+
+    def get_data_from_table(self, table):
+        table_df = self.readDBtable(tablename=table, selectOptions='*')
+        table_dict = dict()
+        fields = list(table_df)
+        for field in fields:
+            table_dict[field] = table_df[field].tolist()
+        return table_dict

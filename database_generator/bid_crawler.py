@@ -10,10 +10,13 @@ import zipfile
 from config import db_logger
 from database_generator.atom_parser import clean_elements
 from database_generator.atom_parser import get_next_link
-from database_generator.atom_parser import process_xml_atom
+from database_generator.atom_parser import parse_atom_feed
 from database_generator.db_helpers import DB_GEN_PATH
-from database_generator.db_helpers import get_data_from_table
-from database_generator.db_helpers import get_db_bid_info
+# from database_generator.db_helpers import get_data_from_table
+
+from config import get_db_connection
+from config import db_logger
+from lxml import etree
 from datetime import datetime
 
 
@@ -38,34 +41,51 @@ def get_urls_to_crawl():
                     unprocessed_historic_files.append(url)
     else:
         unprocessed_historic_files = historic_atom_files
-    return sorted(unprocessed_historic_files, reverse=True) + current_atom_files
+    bids_pcsp = [url for url in unprocessed_historic_files if 'licitacionesPerfilesContratanteCompleto' in url]
+    bids_not_pcsp = [url for url in unprocessed_historic_files if 'PlataformasAgregadasSinMenores' in url]
+    minor_contracts = [url for url in unprocessed_historic_files if 'contratosMenoresPerfilesContratantes' in url]
+    cur_bids_pcsp = [url for url in current_atom_files if 'licitacionesPerfilesContratanteCompleto' in url]
+    cur_bids_not_pcsp = [url for url in current_atom_files if 'PlataformasAgregadasSinMenores' in url]
+    cur_minor_contracts = [url for url in current_atom_files if 'contratosMenoresPerfilesContratantes' in url]
+
+    bids_pcsp = cur_bids_pcsp + sorted(bids_pcsp, reverse=True)
+    bids_not_pcsp = cur_bids_not_pcsp + sorted(bids_not_pcsp, reverse=True)
+    minor_contracts = cur_minor_contracts + sorted(minor_contracts, reverse=True)
+    return bids_pcsp, bids_not_pcsp, minor_contracts
 
 
-def process_url(url):
-    if '.zip' in url:
-        zip_processing(url)
-    else:
-        atom_url_processing(url)
+def start_crawl(urls, lock):
+    db_conn = get_db_connection()
+    for url in urls:
+        if '.zip' in url:
+            parse_zip(url=url, db_conn=db_conn, lock=lock)
+        else:
+            parse_atom(url=url, db_conn=db_conn, lock=lock)
 
 
-def zip_processing(url):
+def parse_zip(url, db_conn, lock):
     db_logger.debug(f'Start processing zip file {url}')
     response = requests.get(url)
     db_logger.debug('Loading bid and organization information from database...')
     crawled_urls = dict()
-    bid_info_db = get_db_bid_info()
+    # lock.acquire()
+    bid_info_db = db_conn.get_db_bid_info()
+    # lock.release()
     with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
         for zipinfo in reversed(zip_file.infolist()):
             with zip_file.open(zipinfo) as atom_file:
                 bids_xml = etree.parse(atom_file)
                 root = clean_elements(bids_xml.getroot())
-                bid_info_db, crawled_urls = process_xml_atom(root, bid_info_db, crawled_urls)
+                bid_info_db, crawled_urls = parse_atom_feed(root=root, db_conn=db_conn, bid_info_db=bid_info_db,
+                                                            crawled_urls=crawled_urls)
     db_logger.debug(f'Finished processing zip file {url}')
+    lock.acquire()
     with open(os.path.join(DB_GEN_PATH, 'processed_zips.txt'), 'a') as f:
         f.write(f'{url}\n')
+    lock.release()
 
 
-def atom_url_processing(url, bid_info_db=None, crawled_urls=None):
+def parse_atom(url, db_conn, lock, bid_info_db=None, crawled_urls=None):
     """Function to get bids for current month
 
     :param url: URL to scrape
@@ -76,8 +96,7 @@ def atom_url_processing(url, bid_info_db=None, crawled_urls=None):
             atom = requests.get(url)
             break
         except BaseException as e:
-            db_logger.debug(f'Exception {e} caught when trying to access url. Retrying...')
-            # sleep(30)
+            db_logger.debug(f'Exception {e} caught when trying to access url. Retrying...')  # sleep(30)
     root = etree.fromstring(atom.content)
     next_link, root = get_next_link(root)
     # Set condition to stop crawling. If the atom references last month, don't scrape since it is going to be
@@ -87,8 +106,11 @@ def atom_url_processing(url, bid_info_db=None, crawled_urls=None):
     if bid_info_db is None and crawled_urls is None:
         db_logger.debug('Loading bid and organization information from database...')
         crawled_urls = dict()
-        bid_info_db = get_db_bid_info()
-    bid_info_db, crawled_urls = process_xml_atom(root, bid_info_db, crawled_urls)
+        # lock.acquire()
+        bid_info_db = db_conn.get_db_bid_info()
+        # lock.release()
+    bid_info_db, crawled_urls = parse_atom_feed(root=root, db_conn=db_conn, bid_info_db=bid_info_db,
+                                                crawled_urls=crawled_urls)
     if next_atom_date is not None:
         if int(next_atom_date.group(1)[4:6]) == this_month:
-            atom_url_processing(next_link, bid_info_db, crawled_urls)
+            parse_atom(url=next_link, db_conn=db_conn, lock=lock, bid_info_db=bid_info_db, crawled_urls=crawled_urls)

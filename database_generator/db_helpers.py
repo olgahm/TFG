@@ -44,16 +44,10 @@ def get_all_tables_info():
     return db_info
 
 
-def get_data_from_table(table):
-    table_df = get_db_connection().readDBtable(tablename=table, selectOptions='*')
-    table_dict = dict()
-    fields = list(table_df)
-    for field in fields:
-        table_dict[field] = table_df[field].tolist()
-    return table_dict
 
 
-def item_to_database(items, db_table, recent_data=None):
+
+def item_to_database(db_conn, items, db_table, recent_data=None):
     """Function to process DocItem in the database.
     Since we are processing strings of unknown length and some of them may be too long to fit in one MySQL field,
     if needed the text is split in halves until it fits in the row. This way we may have more than one entry for the
@@ -78,39 +72,40 @@ def item_to_database(items, db_table, recent_data=None):
             columns = [field for field in to_insert[0]]
             for item in to_insert:
                 rows.append([item[field] for field in columns])
-            get_db_connection().insertInTable(db_table, columns, rows)
+            db_conn.insertInTable(db_table, columns, rows)
         if to_update:
             for item in to_update:
                 fields = [field for field in item if item[field] is not None]
                 values = [[item[pk]] + [item[field] for field in fields]]
-                get_db_connection().setField(db_table, pk, fields, values)
+                db_conn.setField(db_table, pk, fields, values)
     except BaseException as e:
         if 'Duplicate' in str(e):
-            if recent_data:
-                stored_data = recent_data
-            elif db_table != 'texts':
-                db_logger.debug(f'Duplicate entry in table {db_table}. Reloading stored data in memory...')
-                stored_data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
-            elif db_table == 'bids':
-                items = list()
-                for item in to_insert:
-                    if 'deleted_at' in item:
-                        if not deleted_bid(item[pk], item, stored_data):
-                            items.append(item)
-                    else:
-                        if is_new_or_update(item[pk], item['last_updated'], item['last_updated_offset'], item,
-                                            stored_data):
-                            items.append(item)
-            elif db_table == 'texts':
-                items = list()
-                for item in to_insert:
-                    item['bid_id'] += '_1'
-                    items.append(item)
-            data = item_to_database(items, db_table)
-            if data:
-                return data
-            else:
-                return stored_data
+            print('Duplicate')
+            # if recent_data:
+            #     stored_data = recent_data
+            # elif db_table != 'texts':
+            #     db_logger.debug(f'Duplicate entry in table {db_table}. Reloading stored data in memory...')
+            #     stored_data = {'bids': get_db_bid_info(), 'orgs': get_data_from_table('orgs')}
+            # elif db_table == 'bids':
+            #     items = list()
+            #     for item in to_insert:
+            #         if 'deleted_at' in item:
+            #             if not deleted_bid(item[pk], item, stored_data):
+            #                 items.append(item)
+            #         else:
+            #             if is_new_or_update(item[pk], item['last_updated'], item['last_updated_offset'], item,
+            #                                 stored_data):
+            #                 items.append(item)
+            # elif db_table == 'texts':
+            #     items = list()
+            #     for item in to_insert:
+            #         item['bid_id'] += '_1'
+            #         items.append(item)
+            # data = item_to_database(items, db_table)
+            # if data:
+            #     return data
+            # else:
+            #     return stored_data
         elif 'Data too long' in str(e):
             if db_table == 'texts':
                 # Error indicating that the text we are trying to store is way bigger than mysql maximum allowed size.
@@ -310,6 +305,7 @@ def remove_duplicates():
     """
     mysql_connection = get_db_connection()
     tablenames = mysql_connection.getTableNames()
+    tablenames.remove('bids')
     for tablename in tablenames:
         # Rename table for taking only unique records
         column_names = ', '.join(mysql_connection.getColumnNames(tablename))
@@ -319,11 +315,4 @@ def remove_duplicates():
         mysql_connection._conn.commit()
 
 
-def get_db_bid_info():
-    table_df = get_db_connection().readDBtable(tablename='bids', selectOptions='bid_uri, deleted_at_offset, '
-                                                                               'last_updated_offset, last_updated')
-    table_dict = dict()
-    fields = list(table_df)
-    for field in fields:
-        table_dict[field] = table_df[field].tolist()
-    return table_dict
+
