@@ -9,18 +9,22 @@ Created on Aug 31 2018
 """
 
 from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool
 import sys
 import re
 
 from config import get_db_connection
+from database_generator.doc_parser import start_text_extraction
 from database_generator.bid_crawler import get_urls_to_crawl
 from database_generator.bid_crawler import start_crawl
-from database_generator.doc_parser import store_document_text
+from database_generator.doc_parser import doc_to_tokens
 from database_generator.db_helpers import get_all_table_names
 from database_generator.db_helpers import get_mandatory_keys
 from database_generator.db_helpers import get_primary_key
 # from topic_model.model_generator import model_generator
 from database_generator.db_helpers import remove_duplicates
+from config import db_logger
+from config import split_array
 
 from threading import Thread, Lock
 
@@ -56,49 +60,6 @@ def exit():
     sys.exit(0)
 
 
-def extract_text_from_docs():
-    """Function to trigger document download and text extraction and storage in database
-
-    :return:
-    """
-    tech_docs_info = get_db_connection().readDBtable(tablename='docs', selectOptions='*',
-                                                     filterOptions="doc_type='tecnico'")
-    urls = tech_docs_info['doc_url'].tolist()
-    bid_ids = tech_docs_info['bid_id'].tolist()
-    doc_ids = tech_docs_info['doc_id'].tolist()
-    hashes = tech_docs_info['doc_hash'].tolist()
-    stored_bids = get_db_connection().readDBtable(tablename='texts', selectOptions='bid_id')['bid_id'].tolist()
-    stored_bids = list(dict.fromkeys([re.sub('_\d+', '', bid) for bid in stored_bids]))
-    tech_docs = list()
-    for index in range(len(urls)):
-        if bid_ids[index] not in stored_bids:
-            tech_docs.append([urls[index], bid_ids[index], doc_ids[index], hashes[index]])
-    for doc in tech_docs:
-        store_document_text(doc[0], doc[1], doc[2], doc[3])
-    # p = Pool(2)
-    # p.starmap(store_document_text, tech_docs)
-    print('Finished parsing docs!')
-
-
-def reconstruct_database():
-    
-    mandatory_fields = list()
-    primary_keys = list()
-    tables = get_all_table_names()
-    for table in tables:
-        mandatory_fields.append(get_mandatory_keys(table))
-        primary_keys.append(get_primary_key(table))
-    for index, table in enumerate(tables):
-        get_db_connection().deleteDBtables(table)
-        get_db_connection().createDBtable(table, mandatory_fields[index], primary_keys[index])
-    update_database()
-
-
-def generate_model():
-    # model_generator()
-    pass
-
-
 def update_database():
     urls_pcsp, urls_not_pcsp, urls_minor_contracts = get_urls_to_crawl()
 
@@ -114,13 +75,48 @@ def update_database():
     t1.join()
     t2.join()
     t3.join()
-    # pool = Pool()
-    # pool.map(start_crawl, urls_pcsp + urls_minor_contracts + urls_not_pcsp)
-    # for url in urls:
-    #     process_url(url)
-    print('Finished')
+    db_logger.debug('Database updated')
     remove_duplicates()
-    # extract_text_from_docs()
+    # Start document analysis
+    extract_text_from_docs()
+
+
+def extract_text_from_docs():
+    """Function to trigger document download and text extraction and storage in database
+
+    :return:
+    """
+    db_conn = get_db_connection()
+    num_processes = 1
+    # Outer join of tables docs and texts to get unprocessed documents by their url
+    # Since MySQL does not support outer join, emulate it the left join union right join
+    select_qy = f"select docs.doc_url from docs left join texts on docs.doc_url=texts.doc_url where " \
+        f"docs.doc_type='tecnico'"
+    df = db_conn.custom_select_query(select_qy)
+    urls = df['doc_url'].tolist()
+    urls = split_array(urls, len(urls) // num_processes)
+    p = Pool(num_processes)
+    p.map(start_text_extraction, urls)
+    print('Finished parsing docs!')
+
+
+def reconstruct_database():
+    db_conn = get_db_connection()
+    mandatory_fields = list()
+    primary_keys = list()
+    tables = get_all_table_names()
+    for table in tables:
+        mandatory_fields.append(get_mandatory_keys(table))
+        primary_keys.append(get_primary_key(table))
+    for index, table in enumerate(tables):
+        db_conn.deleteDBtables(table)
+        db_conn.createDBtable(table, mandatory_fields[index], primary_keys[index])
+    update_database()
+
+
+def generate_model():
+    # model_generator()
+    pass
 
 
 if __name__ == '__main__':

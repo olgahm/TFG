@@ -159,7 +159,7 @@ class BaseDMsql(object):
         for type in field_dict:
             for field in field_dict[type]:
                 if primary_key == field or (foreign_keys is not None and foreign_keys.get(field, None) is not None):
-                    mysql_cmd += field + ' VARCHAR(250) NOT NULL,'
+                    mysql_cmd += field + ' VARCHAR(255) NOT NULL,'
                 else:
                     mysql_cmd += f'{field} {type},'
         mysql_cmd = mysql_cmd[0:-1]
@@ -631,9 +631,20 @@ class BaseDMsql(object):
 
         return
 
-    def execute_command(self, cmd):
-        self._c.execute(cmd)
+    def execute_commands(self, commands):
+        """Method to execute custom transaction
+
+        :param commands: List of commands
+        :return:
+        """
+        for cmd in commands:
+            self._c.execute(cmd)
         self._conn.commit()
+
+    def custom_select_query(self, query):
+        df = pd.read_sql(query, con=self._conn, coerce_float=False)
+        self._conn.commit()
+        return df
 
     def get_db_bid_info(self):
         table_df = self.readDBtable(tablename='bids', selectOptions='bid_uri, deleted_at_offset, '
@@ -644,8 +655,8 @@ class BaseDMsql(object):
             table_dict[field] = table_df[field].tolist()
         return table_dict
 
-    def get_data_from_table(self, table):
-        table_df = self.readDBtable(tablename=table, selectOptions='*')
+    def get_data_from_table(self, table, selectOptions):
+        table_df = self.readDBtable(tablename=table, selectOptions=selectOptions)
         table_dict = dict()
         fields = list(table_df)
         for field in fields:

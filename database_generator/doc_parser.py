@@ -1,119 +1,57 @@
 import json
-import re
-import sys
-from io import BytesIO
 from time import sleep
-from unidecode import unidecode
+from config import content_types_to_parse
 
 import nltk
-import rarfile
 import requests
-import zipfile
-from bs4 import BeautifulSoup
 from textblob import TextBlob
 from tika import parser
 
-from database_generator.db_helpers import item_to_database
 from config import get_db_connection
-from config import split_array
-from config import text_logger
+from database_generator.document_format_analyzer import format_parsing
+from database_generator.db_helpers import item_to_database
 
 
-def store_document_text(url, bid_id, doc_id, hash):
-    doc_format = doc_id.split('.')[-1].lower()
-    print(f'Processing {doc_format} document')
-    text_logger.debug(f'Processing {doc_format} document')
-    doc_formats = ['pdf', 'doc', 'docx', 'zip', 'rar', 'rtf', 'html', 'htm']
-    non_parsing_doc_formats = ['dwg', 'bc3']
-    if doc_format in doc_formats:
-        response = requests.get(url)
-        to_parse = response.content
-        content_type = response.headers['Content-Type']
-        if doc_format not in content_type:
-            # See url content.
-            soup = BeautifulSoup(to_parse, 'html.parser')
-            doc_link = soup.find('meta')
-            if doc_link is not None:
-                relative_link = doc_link['content']
-                relative_link = re.search("\\'(.*)\\'", relative_link).group(1)
-                abs_link = f'https://contrataciondelestado.es{relative_link}'
-                response = requests.get(abs_link)
-                to_parse = response.content
-            else:
-                if 'Documento no accesible' in response.content.decode('utf8'):
-                    text_logger.debug(f'Document in {url} not available. Deleting entry in database...')
-                    get_db_connection().deleteRowTables('docs', f"doc_url='{url}' and doc_type='tecnico'")
-                elif 'htm' in doc_format:
-                    text_logger.debug(f'Study this {doc_format} url: {url}')
-                else:
-                    text_logger.debug(f'Unprocessed url {url}')
-                return
-        else:
-            print(f'study this doc {url}')
-        if 'zip' in doc_format:
-            file_counter = 0
-            with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
-                for zipinfo in zip_file.infolist():
-                    if zipinfo.filename[-1] != '/':
-                        zipfile_doc_format = zipinfo.filename.split('.')[-1]
-                        if zipfile_doc_format.lower() in doc_formats and zipfile_doc_format.lower() not in \
-                                non_parsing_doc_formats:
-                            with zip_file.open(zipinfo) as file:
-                                to_parse = file.read()
-                                text, ocr = get_pdf_text(to_parse, url)
-                                if text:
-                                    file_counter += 1
-                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'texto_original': text,
-                                            'storage_mode': 'new', 'ocr': ocr}
-                                    item_to_database([item], 'texts')
-                                else:
-                                    print(f'We may need and OCR {url}')
-                        elif zipfile_doc_format.lower() not in non_parsing_doc_formats:
-                            print(f'Erase entries in db for url {url}')
-                            print(f'Unstudied format inside zip {zipfile_doc_format}')
-            return
-        elif 'rar' in doc_format:
-            file_counter = 0
-            print('Found rar file')
-            with rarfile.RarFile(BytesIO(response.content)) as rar_file:
-                for rarinfo in rar_file.infolist():
-                    if rarinfo.filename[-1] != '/':
-                        rarfile_doc_format = rarinfo.filename.split('.')[-1]
-                        if rarfile_doc_format.lower() in doc_formats and rarfile_doc_format.lower() not in \
-                                non_parsing_doc_formats:
-                            with rar_file.open(rarinfo) as file:
-                                to_parse = file.read()
-                                text, ocr = get_pdf_text(to_parse, url)
-                                if text:
-                                    file_counter += 1
-                                    item = {'bid_id': f'{bid_id}_{file_counter}', 'texto_original': text,
-                                            'storage_mode': 'new', 'ocr': ocr}
-                                    item_to_database([item], 'texts')
-                                else:
-                                    print(f'We may need and OCR {url}')
-                        elif rarfile_doc_format.lower() not in non_parsing_doc_formats:
-                            print(f'Unstudied format inside rar {rarfile_doc_format}')
-            return
+def start_text_extraction(urls):
+    db_conn = get_db_connection()
+    for url in urls:
+        doc_to_tokens(url, db_conn)
+
+
+def doc_to_tokens(url, db_conn):
+    documents = url_to_doc(url)
+    if documents is not None:
+        for document in documents:
+            tokens, lang, ocr = extract_text(document)
+            item = {'doc_url': url, 'tokens': tokens}
+            item_to_database(db_conn, i)
     else:
-        print(f'{doc_format}: {url}')
-        return
-    text, ocr = get_pdf_text(to_parse, url)
-    if text:
-        item = {'bid_id': bid_id, 'texto_original': text, 'storage_mode': 'new', 'ocr': ocr}
-        item_to_database([item], 'texts')
+        return None
 
 
-def get_pdf_text(buffer, url):
-    # parsed_data = parser.from_buffer(buffer)
-    # print('Parsed data')
+def url_to_doc(url):
+    response = requests.get(url)
+    content_type = response.headers['Content-Type'].split(';')[0]
+    if content_type in content_types_to_parse:
+        format_function = format_parsing.get(content_type)
+        if format_function is not None:
+            return format_function(response.content)
+        else:
+            return [response.content]
+    else:
+        print('Content type not considered')
+
+
+def extract_text(buffer):
     while True:
         try:
             parsed_data = parser.from_buffer(buffer)
             break
-        except Exception as e:
+        except RuntimeError:
+            print('Error when starting tika server. Retrying...')
+        except BaseException as e:
             print(type(e).__name__)
             sleep(30)
-            continue
     ocr = False
     text = parsed_data['content']
     if 'content' in parsed_data and parsed_data['content'] is not None:
@@ -124,14 +62,13 @@ def get_pdf_text(buffer, url):
         ocr = True
         text = parsed_data['content']
         if parsed_data['content'] is None or not text:
-            print(f"OCR couldn't extract text from {url}")
             return '', False
         else:
             text = remove_punctuation(text)
     tb_text = TextBlob(text)
     lg = tb_text.detect_language()
     if lg != 'es':
-        print(f"Detected non-spanish text in document {url}. {lg} detected")
+        print(f"{lg} detected")
         return '', False
     else:
         pos_and_lemmatize(text)

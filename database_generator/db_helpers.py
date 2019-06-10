@@ -9,6 +9,7 @@ import traceback
 from config import get_db_connection
 import re
 from unidecode import unidecode
+
 import itertools
 import sys
 from config import split_array
@@ -207,95 +208,6 @@ def more_recent_bid(bid_uri, last_updated, offset, stored_last_update, stored_of
             return False
 
 
-# def is_new_or_update(bid_uri, last_update, offset, bid_metadata, bid_info_db):
-#     """Function to check there is information for input bid. If so, check if the bid being processed contains newer
-#     information than stored one.
-#
-#     :param bid_name: bid to check
-#     :param last_update: last update date
-#     :param offset: last update UTC offset
-#
-#     :return:
-#     """
-#     stored_bids = bid_info_db['bids']['bid_uri']  # List of stored bids
-#     stored_last_updates = bid_info_db['bids']['last_updated']  # List of update times
-#     stored_last_update_offsets = bid_info_db['bids']['last_updated_offset']  # List of update offsets
-#     bid_metadata['storage_mode'] = 'new'
-#     update = False
-#     # Check if bid is stored in database
-#     if any(bid_uri == stored_bid for stored_bid in stored_bids):
-#         db_logger.debug(f'Bid {bid_uri} already stored')
-#         # Check last update time for stored bid. If not, the bid has already been deleted
-#         index = stored_bids.index(bid_uri)
-#         stored_last_update = str(stored_last_updates[index])
-#         stored_offset = stored_last_update_offsets[index]
-#         # If the bid has been deleted and there is no info
-#         if stored_offset is None:
-#             db_logger.debug(f'Bid {bid_uri} has only deletion information. Updating bid...')
-#             update = True
-#             bid_metadata['storage_mode'] = 'update'
-#         else:
-#             if stored_offset != offset:
-#                 hours, minutes = offset.split(':')
-#                 stored_hours, stored_minutes = stored_offset.split(':')
-#                 hours = int(hours)
-#                 stored_hours = int(stored_hours)
-#                 minutes = int(minutes)
-#                 stored_minutes = int(stored_minutes)
-#                 last_update = datetime.strptime(last_update, "%Y-%m-%d %H:%M:%S") - timedelta(hours=hours,
-#                                                                                               minutes=minutes)
-#                 stored_last_update = datetime.strptime(stored_last_update, "%Y-%m-%d %H:%M:%S") - timedelta(
-#                     hours=stored_hours, minutes=stored_minutes)
-#             else:
-#                 last_update = datetime.strptime(last_update, "%Y-%m-%d %H:%M:%S")
-#                 stored_last_update = datetime.strptime(stored_last_update, "%Y-%m-%d %H:%M:%S")
-#             # If current last update time is more recent
-#             if last_update > stored_last_update:
-#                 db_logger.debug(f'Bid {bid_uri} is more recent than stored entry. Updating bid...')
-#                 update = True
-#                 bid_metadata['storage_mode'] = 'update'
-#     else:
-#         # If bid is new
-#         db_logger.debug(f'Storing new bid {bid_uri}')
-#         update = True
-#         bid_metadata['storage_mode'] = 'new'
-#     return update
-
-
-# def is_stored(table, item, storage_mode, bid_info_db):
-#     """Function to determine if there is an item in the database exactly equal to the one it is going to be stored
-#
-#     :param table: Table to query
-#     :param item: Item to be checked
-#     :return:
-#     """
-#     stored_data = bid_info_db[table]
-#     duplicated = False
-#     # Check if current item is related to a bid
-#     if any(item['nombre'].lower().strip() == stored_org.lower().strip() for stored_org in stored_data['nombre']):
-#         item['storage_mode'] = 'update'
-#         stored_org_names = [stored_org.lower().strip() for stored_org in stored_data['nombre']]
-#         index = stored_org_names.index(item['nombre'].lower().strip())
-#         this_item = [str(item[key]).lower().strip() for key in item if item[key] is not None and key != 'storage_mode']
-#         stored_item = list()
-#         for field in stored_data:
-#             if stored_data[field][index] is not None:
-#                 stored_item.append(str(stored_data[field][index]).lower().strip())
-#         if len(stored_item) >= len(this_item):
-#             if len(stored_item) > len(this_item):
-#                 db_logger.debug(f'Organization {item["nombre"]} already stored in database')
-#                 duplicated = True
-#             elif sorted(stored_item) == sorted(this_item):
-#                 db_logger.debug(f'Organization {item["nombre"]} already stored in database')
-#                 duplicated = True
-#         else:
-#             duplicated = False
-#     else:
-#         item['storage_mode'] = 'new'
-#         duplicated = False
-#     return duplicated
-
-
 def remove_duplicates():
     """Function to remove duplicate rows from tables.
     This is done by taking all distinct records and writing them to a new table. This new
@@ -307,12 +219,13 @@ def remove_duplicates():
     tablenames = mysql_connection.getTableNames()
     tablenames.remove('bids')
     for tablename in tablenames:
+        db_logger.debug(f'Removing duplicates for table {tablename}')
         # Rename table for taking only unique records
         column_names = ', '.join(mysql_connection.getColumnNames(tablename))
-        mysql_connection._c.execute(f'RENAME TABLE {tablename} to {tablename}_tmp')
-        mysql_connection._c.execute(f'CREATE TABLE {tablename} SELECT * FROM {tablename}_tmp GROUP BY {column_names}')
-        mysql_connection._c.execute(f'DROP TABLE {tablename}_tmp')
-        mysql_connection._conn.commit()
-
+        commands = [f'RENAME TABLE {tablename} to {tablename}_tmp',
+                    f'CREATE TABLE {tablename} SELECT * FROM {tablename}_tmp GROUP BY {column_names}',
+                    f'DROP TABLE {tablename}_tmp']
+        mysql_connection.execute_commands(commands)
+    db_logger.debug('All duplicates removed')
 
 

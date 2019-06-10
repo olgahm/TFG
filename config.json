@@ -1,0 +1,5 @@
+{
+  "content_types_to_parse": ["application/pdf", "text/html"],
+  "formats_to_parse": ["pdf", "doc", "docx", "zip", "rar", "rtf", "html", "htm"],
+  "formats_to_ignore": ["dwg", "bc3"]
+}

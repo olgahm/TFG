@@ -81,7 +81,8 @@
         "doc_type",
         "doc_hash",
         "idioma"
-      ]
+      ],
+      "BOOLEAN": ["ocr"]
     }
   },
   "orgs": {
@@ -279,15 +280,11 @@
     }
   },
   "texts": {
-    "primary_key": "bid_id",
+    "primary_key": null,
     "fields": {
       "TEXT": [
-        "bid_id",
-        "texto_original",
+        "doc_url",
         "tokens"
-      ],
-      "BOOLEAN": [
-        "ocr"
       ]
     }
   }

@@ -2,6 +2,7 @@ from mysql_helpers import BaseDMsql
 import logging
 from logging import FileHandler
 from logging import Formatter
+import json
 
 # TODO: Funciones para procesar un JSON de entrada
 # db_connection = BaseDMsql(db_name='contratacion_del_estado', db_connector='mysql', db_server='localhost',
@@ -23,6 +24,13 @@ text_logger_file_handler = FileHandler('log/text_extractor.log')
 text_logger_file_handler.setLevel(logging.DEBUG)
 text_logger_file_handler.setFormatter(Formatter(LOG_FORMAT))
 text_logger.addHandler(text_logger_file_handler)
+
+# Load config file
+with open('config.json') as config_file:
+    config = json.loads(config_file.read())
+formats_to_parse = config['formats_to_parse']
+formats_to_ignore = config['formats_to_ignore']
+content_types_to_parse = config['content_types_to_parse']
 
 
 def get_db_connection():
