@@ -6,3 +6,4 @@ selenium_crawler.log
 log/
 venv/
 __pycache__/
+nlp/

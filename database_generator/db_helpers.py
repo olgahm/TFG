@@ -224,6 +224,7 @@ def remove_duplicates():
         column_names = ', '.join(mysql_connection.getColumnNames(tablename))
         commands = [f'RENAME TABLE {tablename} to {tablename}_tmp',
                     f'CREATE TABLE {tablename} SELECT * FROM {tablename}_tmp GROUP BY {column_names}',
+                    f'ALTER TABLE {tablename} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
                     f'DROP TABLE {tablename}_tmp']
         mysql_connection.execute_commands(commands)
     db_logger.debug('All duplicates removed')
