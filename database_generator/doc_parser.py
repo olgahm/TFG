@@ -10,6 +10,7 @@ from tika import parser
 from config import get_db_connection
 from database_generator.document_format_analyzer import format_parsing
 from database_generator.db_helpers import item_to_database
+import sys
 
 
 def start_text_extraction(urls):
@@ -23,10 +24,10 @@ def doc_to_tokens(url, db_conn):
     if documents is not None:
         for document in documents:
             tokens, lang, ocr = extract_text(document)
-            item = {'doc_url': url, 'tokens': tokens}
-            item_to_database(db_conn, i)
+            # item = {'doc_url': url, 'tokens': tokens}
+            # item_to_database(db_conn, i)
     else:
-        return None
+        print(url)
 
 
 def url_to_doc(url):
@@ -43,6 +44,8 @@ def url_to_doc(url):
 
 
 def extract_text(buffer):
+    lang = str()
+    ocr = False
     while True:
         try:
             parsed_data = parser.from_buffer(buffer)
@@ -52,7 +55,6 @@ def extract_text(buffer):
         except BaseException as e:
             print(type(e).__name__)
             sleep(30)
-    ocr = False
     text = parsed_data['content']
     if 'content' in parsed_data and parsed_data['content'] is not None:
         text = remove_punctuation(text)
@@ -62,7 +64,7 @@ def extract_text(buffer):
         ocr = True
         text = parsed_data['content']
         if parsed_data['content'] is None or not text:
-            return '', False
+            return None, ocr, False
         else:
             text = remove_punctuation(text)
     tb_text = TextBlob(text)
@@ -89,8 +91,13 @@ def remove_punctuation(raw_text):
 
 
 def pos_and_lemmatize(text):
+    tokens = list()
     json_request = {"filter": ["NOUN", "ADJECTIVE", "VERB", "ADVERB"], "multigrams": True, "references": False,
                     "lang": 'es', "text": text}
     token_info = requests.post('http://localhost:7777/nlp/annotations', json=json_request).content.decode('utf-8')
     token_info = json.loads(token_info)['annotatedText']
-    print('stop')
+    for token in token_info:
+        tokens.append(token['token']['lemma'])
+    print(tokens)
+    sys.exit(0)
+
