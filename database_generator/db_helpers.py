@@ -48,7 +48,7 @@ def get_all_tables_info():
 
 
 
-def item_to_database(db_conn, items, db_table, recent_data=None):
+def item_to_database(db_conn, items, db_table, ref_field=None):
     """Function to process DocItem in the database.
     Since we are processing strings of unknown length and some of them may be too long to fit in one MySQL field,
     if needed the text is split in halves until it fits in the row. This way we may have more than one entry for the
@@ -58,7 +58,10 @@ def item_to_database(db_conn, items, db_table, recent_data=None):
     :return: Last stored item
     """
     # global stored_pk
-    pk = get_primary_key(db_table)
+    if ref_field is not None:
+        pk = ref_field
+    else:
+        pk = get_primary_key(db_table)
     to_update = [item for item in items if item.get('storage_mode', '') == 'update']
     to_insert = [item for item in items if item.get('storage_mode', '') != 'update']
     for item in to_update:

@@ -91,7 +91,7 @@ def extract_text_from_docs():
     # Outer join of tables docs and texts to get unprocessed documents by their url
     # Since MySQL does not support outer join, emulate it the left join union right join
     select_qy = f"select docs.doc_url from docs left join texts on docs.doc_url=texts.doc_url where " \
-        f"docs.doc_type='tecnico'"
+        f"texts.doc_url IS NULL AND docs.doc_type='tecnico'"
     df = db_conn.custom_select_query(select_qy)
     urls = df['doc_url'].tolist()
     urls = split_array(urls, len(urls) // num_processes)

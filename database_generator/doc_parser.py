@@ -1,11 +1,14 @@
 import json
 from time import sleep
 from config import content_types_to_parse
+from config import split_array
 
 import nltk
+from nltk.corpus import stopwords
 import requests
 from textblob import TextBlob
 from tika import parser
+from langdetect import detect
 
 from config import get_db_connection
 from database_generator.document_format_analyzer import format_parsing
@@ -24,6 +27,10 @@ def doc_to_tokens(url, db_conn):
     if documents is not None:
         for document in documents:
             tokens, lang, ocr = extract_text(document)
+            doc = [{'doc_url': url, 'idioma': lang, 'ocr': ocr, 'storage_mode': 'update'}]
+            item_to_database(db_conn, doc, 'docs', 'doc_url')
+            text = [{'doc_url': url, 'tokens': tokens}]
+            item_to_database(db_conn, text, 'texts')
             # item = {'doc_url': url, 'tokens': tokens}
             # item_to_database(db_conn, i)
     else:
@@ -69,12 +76,16 @@ def extract_text(buffer):
             text = remove_punctuation(text)
     tb_text = TextBlob(text)
     lg = tb_text.detect_language()
+    lg_lg = detect(text)
+    if lg != lg_lg:
+        print('Not equal')
     if lg != 'es':
         print(f"{lg} detected")
         return '', False
     else:
-        pos_and_lemmatize(text)
-    return text, ocr
+        tokens = pos_and_lemmatize(text)
+        tokens = clean_tokens(tokens)
+    return ' '.join(tokens), lg, ocr
 
 
 def remove_punctuation(raw_text):
@@ -85,19 +96,36 @@ def remove_punctuation(raw_text):
     """
     try:
         tokens = [token for token in nltk.word_tokenize(raw_text, 'spanish') if token.isalnum()]
-    except BaseException as e:
-        print('Error tokenizing')
+    except:
+        # Download punkt module from nltk
+        nltk.download('punkt')
+        tokens = [token for token in nltk.word_tokenize(raw_text, 'spanish') if token.isalnum()]
     return ' '.join(tokens)
 
 
-def pos_and_lemmatize(text):
+def pos_and_lemmatize(raw_text):
     tokens = list()
-    json_request = {"filter": ["NOUN", "ADJECTIVE", "VERB", "ADVERB"], "multigrams": True, "references": False,
-                    "lang": 'es', "text": text}
-    token_info = requests.post('http://localhost:7777/nlp/annotations', json=json_request).content.decode('utf-8')
-    token_info = json.loads(token_info)['annotatedText']
-    for token in token_info:
-        tokens.append(token['token']['lemma'])
-    print(tokens)
-    sys.exit(0)
+    # Split document in chunks of 80 words in order to lemmatize each chunk with librairy
+    text_chunks = split_array(raw_text.split(), 100)
+    for text in text_chunks:
+        tokens_chunk = list()
+        json_request = {"filter": ["NOUN", "ADJECTIVE", "VERB", "ADVERB"], "multigrams": True, "references": False,
+                        "lang": 'es', "text": ' '.join(text).lower()}
+        token_info = requests.post('http://localhost:7777/nlp/annotations', json=json_request).content.decode('utf-8')
+        token_info = json.loads(token_info)['annotatedText']
+        for token in token_info:
+            tokens_chunk.append(token['token']['lemma'])
+        tokens += tokens_chunk
+    return tokens
 
+
+def clean_tokens(tokens):
+    try:
+        sw = stopwords.words('spanish')
+    except:
+        # Download stopwords
+        nltk.download('stopwords')
+        sw = stopwords.words('spanish')
+    # Remove stopwords
+    tokens = [token for token in tokens if token not in sw]
+    return tokens
