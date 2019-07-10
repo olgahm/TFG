@@ -1,5 +1,5 @@
 bs4==0.0.1
-gensim==3.7.3
+gensim==3.8.0
 iso8601==0.1.12
 lxml==4.3.3
 nltk==3.4.3
@@ -9,3 +9,4 @@ rarfile==3.0
 textblob==0.15.3
 tika==1.19
 Unidecode==1.0.23
+pyldavis==2.1.2

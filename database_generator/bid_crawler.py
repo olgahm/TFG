@@ -2,20 +2,19 @@ from io import BytesIO
 import os
 
 from bs4 import BeautifulSoup
-from lxml import etree
 import re
 import requests
 import zipfile
 
 from config import db_logger
-from database_generator.atom_parser import clean_elements
+from database_generator.atom_parser import clean_atom_elements
 from database_generator.atom_parser import get_next_link
 from database_generator.atom_parser import parse_atom_feed
-from database_generator.db_helpers import DB_GEN_PATH
 # from database_generator.db_helpers import get_data_from_table
 
-from config import get_db_connection
+from helpers import get_db_connection
 from config import db_logger
+from config import ROOT_DIR
 from lxml import etree
 from datetime import datetime
 
@@ -33,8 +32,8 @@ def get_urls_to_crawl():
 
     # Check if any of the historic bids have already been processed and stored in database
     unprocessed_historic_files = list()
-    if os.path.exists(os.path.join(DB_GEN_PATH, 'processed_zips.txt')):
-        with open(os.path.join(DB_GEN_PATH, 'processed_zips.txt')) as f:
+    if os.path.exists(os.path.join(ROOT_DIR, 'processed_zips.txt')):
+        with open(os.path.join(ROOT_DIR, 'processed_zips.txt')) as f:
             processed_zips = [url.strip() for url in f.readlines()]
             for url in historic_atom_files:
                 if url not in processed_zips:
@@ -69,18 +68,18 @@ def parse_zip(url, db_conn, lock):
     db_logger.debug('Loading bid and organization information from database...')
     crawled_urls = dict()
     # lock.acquire()
-    bid_info_db = db_conn.get_db_bid_info()
+    bid_info_db = db_conn.get_data_from_table('bids', 'bid_uri, deleted_at_offset,last_updated_offset, last_updated')
     # lock.release()
     with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
         for zipinfo in reversed(zip_file.infolist()):
             with zip_file.open(zipinfo) as atom_file:
                 bids_xml = etree.parse(atom_file)
-                root = clean_elements(bids_xml.getroot())
+                root = clean_atom_elements(bids_xml.getroot())
                 bid_info_db, crawled_urls = parse_atom_feed(root=root, db_conn=db_conn, bid_info_db=bid_info_db,
                                                             crawled_urls=crawled_urls)
     db_logger.debug(f'Finished processing zip file {url}')
     lock.acquire()
-    with open(os.path.join(DB_GEN_PATH, 'processed_zips.txt'), 'a') as f:
+    with open(os.path.join(ROOT_DIR, 'processed_zips.txt'), 'a') as f:
         f.write(f'{url}\n')
     lock.release()
 
@@ -107,10 +106,11 @@ def parse_atom(url, db_conn, lock, bid_info_db=None, crawled_urls=None):
         db_logger.debug('Loading bid and organization information from database...')
         crawled_urls = dict()
         # lock.acquire()
-        bid_info_db = db_conn.get_db_bid_info()
+        bid_info_db = db_conn.get_data_from_table('bids', 'bid_uri, deleted_at_offset,last_updated_offset, last_updated')
         # lock.release()
     bid_info_db, crawled_urls = parse_atom_feed(root=root, db_conn=db_conn, bid_info_db=bid_info_db,
                                                 crawled_urls=crawled_urls)
     if next_atom_date is not None:
         if int(next_atom_date.group(1)[4:6]) == this_month:
+            db_logger.debug('Going to next atom...')
             parse_atom(url=next_link, db_conn=db_conn, lock=lock, bid_info_db=bid_info_db, crawled_urls=crawled_urls)

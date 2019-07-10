@@ -5,12 +5,10 @@ import iso8601
 import pytz
 # from database_generator.db_helpers import is_stored
 # from database_generator.db_helpers import get_data_from_table
-from database_generator.db_helpers import new_bid, more_recent_bid
-from database_generator.db_helpers import deleted_bid
-from database_generator.db_helpers import item_to_database
+from helpers import insert_or_update_records
 from config import db_logger
 from unidecode import unidecode
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
 import sys
 
@@ -64,7 +62,7 @@ required_business_classification_schema = {"bid_id": None, "codigo_clasificacion
 
 
 def get_next_link(root):
-    root = clean_elements(root)
+    root = clean_atom_elements(root)
     for link in root.iterfind('link'):
         if link.attrib['rel'] == 'next':
             next_link = link.attrib['href']
@@ -135,7 +133,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
         code = bid_status.text
         url_bid_status = bid_status.attrib['listURI']
         if url_bid_status:
-            status_dict = code_mapper(url_bid_status, crawled_urls)
+            status_dict = get_code_info(url_bid_status, crawled_urls)
             bid_metadata['bid_status'] = status_dict.get(code, code)
         # ID EXPEDIENTE (1)
         id_expediente = status.find('ContractFolderID')
@@ -181,7 +179,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 cpv_metadata['code'] = cpv_code
                 url_cpv_code = code_element.attrib['listURI']
                 if url_cpv_code:
-                    code_dict = code_mapper(url_cpv_code, crawled_urls)
+                    code_dict = get_code_info(url_cpv_code, crawled_urls)
                     cpv_metadata['code_description'] = code_dict.get(cpv_code, '')
                 bid_cpvs_to_database.append(cpv_metadata)
             ## TIPO DE CONTRATO (0-1)
@@ -190,7 +188,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, crawled_urls)
+                    type_dict = get_code_info(url_bid_type, crawled_urls)
                     bid_metadata['tipo_contrato'] = type_dict.get(type, type)
             ## SUBTIPO DE CONTRATO (0-1)
             subtype_element = procurement_project.find('SubTypeCode')
@@ -198,7 +196,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 code = subtype_element.text
                 url_code = subtype_element.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, crawled_urls)
+                    code_dict = get_code_info(url_code, crawled_urls)
                     bid_metadata['subtipo_contrato'] = code_dict.get(code, '')
             ## EXTENSION DEL CONTRATO
             for contract_extension in procurement_project.iterfind('ContractExtension'):
@@ -219,7 +217,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                     county = county_element.text
                     url_bid_county = county_element.attrib['listURI']
                     if url_bid_county:
-                        county_dict = code_mapper(url_bid_county, crawled_urls)
+                        county_dict = get_code_info(url_bid_county, crawled_urls)
                         bid_metadata['comunidad_ejecucion'] = county_dict.get(county, county)
                 address = location.find('Address')
                 if address is not None:
@@ -234,7 +232,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                         code = country.text
                         url_codes = country.attrib['listURI']
                         if url_codes:
-                            code_dict = code_mapper(url_codes, crawled_urls)
+                            code_dict = get_code_info(url_codes, crawled_urls)
                             bid_metadata['pais_ejecucion'] = code_dict.get(code, code)
         # DOCUMENTOS: Van en otra base de datos (1 licitación - N documentos)
         ## PLIEGO ADMINISTRATIVO (0-1)
@@ -300,7 +298,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 cpv_metadata['code'] = cpv_code
                 url_cpv_code = code_element.attrib['listURI']
                 if url_cpv_code:
-                    code_dict = code_mapper(url_cpv_code, crawled_urls)
+                    code_dict = get_code_info(url_cpv_code, crawled_urls)
                     cpv_metadata['code_description'] = code_dict.get(cpv_code, '')
                 lot_cpvs_to_database.append(cpv_metadata)
             lots_to_database.append(lot_metadata)
@@ -314,7 +312,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, crawled_urls)
+                    type_dict = get_code_info(url_bid_type, crawled_urls)
                     bid_metadata['tipo_procedimiento'] = type_dict.get(type, type)
             ## SISTEMA DE CONTRATACION
             type_element = tendering_process.find('ContractingSystemCode')
@@ -322,7 +320,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, crawled_urls)
+                    type_dict = get_code_info(url_bid_type, crawled_urls)
                     bid_metadata['sistema_contratacion'] = type_dict.get(type, type)
             ## TIPO DE TRAMITACION
             type_element = tendering_process.find('UrgencyCode')
@@ -330,7 +328,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, crawled_urls)
+                    type_dict = get_code_info(url_bid_type, crawled_urls)
                     bid_metadata['tipo_tramitacion'] = type_dict.get(type, type)
             ## PRESENTACION DE LA OFERTA
             type_element = tendering_process.find('SubmissionMethodCode')
@@ -338,7 +336,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 type = type_element.text
                 url_bid_type = type_element.attrib['listURI']
                 if url_bid_type:
-                    type_dict = code_mapper(url_bid_type, crawled_urls)
+                    type_dict = get_code_info(url_bid_type, crawled_urls)
                     bid_metadata['presentacion_oferta'] = type_dict.get(type, type)
             ## PLAZO DE PLIEGOS
             plazo_pliego = tendering_process.find('DocumentAvailabilityPeriod')
@@ -366,7 +364,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                     type = event_type.text
                     url_event_type = event_type.attrib['listURI']
                     if url_event_type:
-                        type_dict = code_mapper(url_event_type, crawled_urls)
+                        type_dict = get_code_info(url_event_type, crawled_urls)
                         event_metadata['tipo'] = type_dict.get(type, type)
                 event_id = evento_element.find('IdentificationID')
                 if event_id is not None:
@@ -399,7 +397,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                             country_code = country.text
                             url_country_code = country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, crawled_urls)
+                                code_dict = get_code_info(url_country_code, crawled_urls)
                                 event_metadata['pais'] = code_dict.get(country_code, country_code)
                 events_to_database.append(event_metadata)
 
@@ -426,7 +424,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                     code = reason_code.text
                     url_code = reason_code.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, crawled_urls)
+                        code_dict = get_code_info(url_code, crawled_urls)
                         bid_metadata['codigo_justificacion_proceso_extraordinario'] = code_dict.get(code, code)
                 description = justification.find('Description')
                 if description is not None:
@@ -465,7 +463,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                         country_code = provider_country.text
                         url_country_code = provider_country.attrib['listURI']
                         if url_country_code:
-                            code_dict = code_mapper(url_country_code, crawled_urls)
+                            code_dict = get_code_info(url_country_code, crawled_urls)
                             org_metadata['pais'] = code_dict.get(country_code, country_code)
                 provider_contact_info = provider_element.find('Contact')
                 if provider_contact_info is not None:
@@ -509,7 +507,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                         country_code = receiving_country.text
                         url_country_code = receiving_country.attrib['listURI']
                         if url_country_code:
-                            code_dict = code_mapper(url_country_code, crawled_urls)
+                            code_dict = get_code_info(url_country_code, crawled_urls)
                             org_metadata['pais'] = code_dict.get(country_code, country_code)
                 receiving_contact_info = receiving_element.find('Contact')
                 if receiving_contact_info is not None:
@@ -554,7 +552,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                         country_code = provider_country.text
                         url_country_code = provider_country.attrib['listURI']
                         if url_country_code:
-                            code_dict = code_mapper(url_country_code, crawled_urls)
+                            code_dict = get_code_info(url_country_code, crawled_urls)
                             org_metadata['pais'] = code_dict.get(country_code, country_code)
                 provider_contact_info = provider_element.find('Contact')
                 if provider_contact_info is not None:
@@ -602,7 +600,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                             country_code = resource_country.text
                             url_country_code = resource_country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, crawled_urls)
+                                code_dict = get_code_info(url_country_code, crawled_urls)
                                 org_metadata['pais'] = code_dict.get(country_code, country_code)
                     resource_contact_info = resource_info_element.find('Contact')
                     if resource_contact_info is not None:
@@ -647,7 +645,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                             country_code = resource_country.text
                             url_country_code = resource_country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, crawled_urls)
+                                code_dict = get_code_info(url_country_code, crawled_urls)
                                 org_metadata['pais'] = code_dict.get(country_code, country_code)
                     resource_contact_info = resource_presentation_element.find('Contact')
                     if resource_contact_info is not None:
@@ -699,7 +697,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                             country_code = mediation_country.text
                             url_country_code = mediation_country.attrib['listURI']
                             if url_country_code:
-                                code_dict = code_mapper(url_country_code, crawled_urls)
+                                code_dict = get_code_info(url_country_code, crawled_urls)
                                 org_metadata['pais'] = code_dict.get(country_code, country_code)
                     mediation_contact_info = mediation_element.find('Contact')
                     if mediation_contact_info is not None:
@@ -737,7 +735,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 code = funding_program_code.text
                 url_code = funding_program_code.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, crawled_urls)
+                    code_dict = get_code_info(url_code, crawled_urls)
                     funding_program_text = code_dict.get(code, code)
             if funding_program is not None:
                 funding_program_text += f' {funding_program.text}'
@@ -752,7 +750,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                     code = guarantee_type.text
                     url_code = guarantee_type.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, crawled_urls)
+                        code_dict = get_code_info(url_code, crawled_urls)
                         guarantee_metadata['tipo_garantia'] = code_dict.get(code, code)
                 guarantee_amount = guarantee_element.find('LiabilityAmount')
                 if guarantee_amount is not None:
@@ -793,7 +791,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                     code = condition.text
                     url_code = condition.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, crawled_urls)
+                        code_dict = get_code_info(url_code, crawled_urls)
                         cond_metadata['condicion'] = code_dict.get(code, code)
                     admission_conditions_to_database.append(cond_metadata)
 
@@ -807,7 +805,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                         code = criteria_code.text
                         url_code = criteria_code.attrib['listURI']
                         if url_code:
-                            code_dict = code_mapper(url_code, crawled_urls)
+                            code_dict = get_code_info(url_code, crawled_urls)
                             crit_metadata['codigo_criterio'] = code_dict.get(code, code)
                     criteria_description = tech_criteria.find('Description')
                     if criteria_description is not None:
@@ -823,7 +821,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                         code = criteria_code.text
                         url_code = criteria_code.attrib['listURI']
                         if url_code:
-                            code_dict = code_mapper(url_code, crawled_urls)
+                            code_dict = get_code_info(url_code, crawled_urls)
                             crit_metadata['codigo_criterio'] = code_dict.get(code, code)
                     criteria_description = finantial_criteria.find('Description')
                     if criteria_description is not None:
@@ -850,7 +848,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                     code = envelope_type.text
                     url_code = envelope_type.attrib['listURI']
                     if url_code:
-                        code_dict = code_mapper(url_code, crawled_urls)
+                        code_dict = get_code_info(url_code, crawled_urls)
                         bid_metadata['tipo_documento_sobre'] = code_dict.get(code, code)
                 envelope_description = tender_preparation.find('Description')
                 if envelope_description is not None:
@@ -876,7 +874,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 code = code_element.text
                 url_code = code_element.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, crawled_urls)
+                    code_dict = get_code_info(url_code, crawled_urls)
                     ## ESTADO FINAL ADJUDIACION
                     winner_metadata['resultado'] = code_dict.get(code, code)
             ## ADJUDICATARIO
@@ -970,7 +968,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
             code = org_type_code.text
             url_code = org_type_code.attrib['listURI']
             if url_code:
-                code_dict = code_mapper(url_code, crawled_urls)
+                code_dict = get_code_info(url_code, crawled_urls)
                 org_metadata['tipo_organismo'] = code_dict.get(code, code)
         org_addr_info = org_element.find('PostalAddress')
         if org_addr_info is not None:
@@ -988,7 +986,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 country_code = org_country.text
                 url_country_code = org_country.attrib['listURI']
                 if url_country_code:
-                    code_dict = code_mapper(url_country_code, crawled_urls)
+                    code_dict = get_code_info(url_country_code, crawled_urls)
                     org_metadata['pais'] = code_dict.get(country_code, country_code)
         org_contact_info = org_element.find('Contact')
         if org_contact_info is not None:
@@ -1007,7 +1005,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
         orgs_to_database.append(org_metadata)
         hiera_element = located_contracting_party.find('ParentLocatedParty')
         if hiera_element is not None:
-            upper_levels = iterate_parent_contractor(hiera_element)
+            upper_levels = get_full_contractor_name(hiera_element)
         if upper_levels:
             bid_metadata['organo_de_contratacion'] = f'{upper_levels} > {lowest_level}'
         else:
@@ -1052,7 +1050,7 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                 code = add_type.text
                 url_code = add_type.attrib['listURI']
                 if url_code:
-                    code_dict = code_mapper(url_code, crawled_urls)
+                    code_dict = get_code_info(url_code, crawled_urls)
                     medium_metadata['tipo_anuncio'] = code_dict.get(code, code)
             ## Puede haber varios medios de publicacion para un mismo tipo de anuncio
             for pub_status in medium.iterfind('AdditionalPublicationStatus'):
@@ -1066,42 +1064,41 @@ def parse_atom_feed(root, db_conn, bid_info_db, crawled_urls):
                     publications_to_database.append(copy2_pub_metadata)
         bids_to_database.append(bid_metadata)
     if mods_to_database:
-        item_to_database(db_conn, mods_to_database, 'contract_mods')
+        insert_or_update_records(db_conn, mods_to_database, 'contract_mods')
     if winners_to_database:
-        item_to_database(db_conn, winners_to_database, 'winners')
+        insert_or_update_records(db_conn, winners_to_database, 'winners')
     if awarding_conditions_to_database:
-        item_to_database(db_conn, awarding_conditions_to_database, "awarding_conditions")
+        insert_or_update_records(db_conn, awarding_conditions_to_database, "awarding_conditions")
     if bid_cpvs_to_database:
-        item_to_database(db_conn, bid_cpvs_to_database, 'bid_cpv_codes')
+        insert_or_update_records(db_conn, bid_cpvs_to_database, 'bid_cpv_codes')
     if contract_extensions_to_database:
-        item_to_database(db_conn, contract_extensions_to_database, 'contract_extensions')
+        insert_or_update_records(db_conn, contract_extensions_to_database, 'contract_extensions')
     if docs_to_database:
-        item_to_database(db_conn, docs_to_database, 'docs')
+        insert_or_update_records(db_conn, docs_to_database, 'docs')
     if lot_cpvs_to_database:
-        item_to_database(db_conn, lot_cpvs_to_database, 'lot_cpv_codes')
+        insert_or_update_records(db_conn, lot_cpvs_to_database, 'lot_cpv_codes')
     if lots_to_database:
-        item_to_database(db_conn, lots_to_database, 'lots')
+        insert_or_update_records(db_conn, lots_to_database, 'lots')
     if events_to_database:
-        item_to_database(db_conn, events_to_database, 'events')
+        insert_or_update_records(db_conn, events_to_database, 'events')
     if guarantees_to_database:
-        item_to_database(db_conn, guarantees_to_database, 'required_guarantees')
+        insert_or_update_records(db_conn, guarantees_to_database, 'required_guarantees')
     if bussiness_class_to_database:
-        item_to_database(db_conn, bussiness_class_to_database, 'required_business_classifications')
+        insert_or_update_records(db_conn, bussiness_class_to_database, 'required_business_classifications')
     if admission_conditions_to_database:
-        item_to_database(db_conn, admission_conditions_to_database, 'admission_conditions')
+        insert_or_update_records(db_conn, admission_conditions_to_database, 'admission_conditions')
     if ev_criteria_to_database:
-        item_to_database(db_conn, ev_criteria_to_database, 'evaluation_criteria')
+        insert_or_update_records(db_conn, ev_criteria_to_database, 'evaluation_criteria')
     if publications_to_database:
-        item_to_database(db_conn, publications_to_database, 'publications')
+        insert_or_update_records(db_conn, publications_to_database, 'publications')
     if orgs_to_database:
-        item_to_database(db_conn, orgs_to_database, 'orgs')
+        insert_or_update_records(db_conn, orgs_to_database, 'orgs')
     if bids_to_database:
         bids_to_database = clean_bid_list(bids_to_database)
-        item_to_database(db_conn, bids_to_database, 'bids')
+        insert_or_update_records(db_conn, bids_to_database, 'bids')
         db_logger.debug('Reloading bid and organization information from database...')
         print('Updating bids')
-        # lock.acquire()
-        bid_info_db = update_bid_info_db(bids_to_database, bid_info_db)  # lock.release()
+        bid_info_db = update_bid_info_db(bids_to_database, bid_info_db)
     return bid_info_db, crawled_urls
 
 
@@ -1123,7 +1120,7 @@ def update_bid_info_db(inserted_bids, bid_info_db):
 
 
 def clean_bid_list(bids_to_database):
-    db_logger.debug('Storing or updating bids in database...')
+    # db_logger.debug('Storing or updating bids in database...')
     # Order bid list by last update, keeping deleted bids first
     deleted_bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is None]
     actual_bids_to_db = [bid for bid in bids_to_database if bid['last_updated'] is not None]
@@ -1179,7 +1176,7 @@ def parse_rfc3339_time(date):
     return date, offset
 
 
-def code_mapper(url, mapping):
+def get_code_info(url, mapping):
     if not mapping.get(url, ''):
         response = requests.get(url)
         # Check if URL is accessible
@@ -1198,14 +1195,14 @@ def code_mapper(url, mapping):
     return mapping[url]
 
 
-def iterate_parent_contractor(element):
+def get_full_contractor_name(element):
     this_level = str()
     super_level = str()
     for child in element:
         if 'Name' in child.tag:
             this_level = child.find("Name").text
         else:
-            super_level = iterate_parent_contractor(child)
+            super_level = get_full_contractor_name(child)
     if not super_level:
         return this_level
     elif super_level == this_level:
@@ -1214,8 +1211,70 @@ def iterate_parent_contractor(element):
         return f'{super_level} > {this_level}'
 
 
-def clean_elements(root):
+def clean_atom_elements(root):
     for element in root:
         element.tag = re.sub('{.*}', '', element.tag)
-        clean_elements(element)
+        clean_atom_elements(element)
     return root
+
+
+def deleted_bid(bid_uri, bid_metadata, bid_info_db):
+    """
+
+    :param bid_uri: Bid id
+    :param bid_metadata: Bid data
+    :param bid_info_db: dict with items stored in database
+    :return:
+    """
+    stored_bids = bid_info_db['bid_uri']  # List of stored bids
+    stored_offsets = bid_info_db['deleted_at_offset']  # List of deletion_times
+    deleted = False
+    bid_metadata['storage_mode'] = 'new'
+    if bid_uri in stored_bids:
+        db_logger.debug(f'Bid {bid_uri} already stored')
+        index = stored_bids.index(bid_uri)
+        deletion_date = stored_offsets[index]
+        if deletion_date is None:
+            db_logger.debug(f'Storing deletion date for bid {bid_uri}')
+            deleted = False
+            bid_metadata['storage_mode'] = 'update'
+        else:
+            db_logger.debug(f'Bid {bid_uri} already deleted from PCSP')
+            deleted = True
+    else:
+        db_logger.debug(f'Storing deleted bid {bid_uri}')
+    return deleted
+
+
+def new_bid(bid_uri, bid_metadata, bid_info_db):
+    stored_bids = bid_info_db['bid_uri']  # List of stored bids
+    if bid_uri in stored_bids:
+        bid_metadata['storage_mode'] = 'update'
+        return False
+    else:
+        bid_metadata['storage_mode'] = 'new'
+        return True
+
+
+def more_recent_bid(bid_uri, last_updated, offset, stored_last_update, stored_offset):
+    if stored_offset is None:  # This means that the bid appears as deleted but there is not actual data for the bid
+        return True
+    else:
+        if stored_offset != offset:  # If different offsets, transform times to UTC
+            hours, minutes = offset.split(':')
+            stored_hours, stored_minutes = stored_offset.split(':')
+            hours = int(hours)
+            stored_hours = int(stored_hours)
+            minutes = int(minutes)
+            stored_minutes = int(stored_minutes)
+            last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S") - timedelta(hours=hours, minutes=minutes)
+            stored_last_update = datetime.strptime(str(stored_last_update), "%Y-%m-%d %H:%M:%S") - timedelta(
+                hours=stored_hours, minutes=stored_minutes)
+        else:
+            last_update = datetime.strptime(last_updated, "%Y-%m-%d %H:%M:%S")
+            stored_last_update = datetime.strptime(str(stored_last_update), "%Y-%m-%d %H:%M:%S")
+        if last_update > stored_last_update:
+            db_logger.debug(f'Bid {bid_uri} is more recent than stored entry. Updating bid...')
+            return True
+        else:
+            return False

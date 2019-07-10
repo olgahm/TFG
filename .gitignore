@@ -7,3 +7,5 @@ log/
 venv/
 __pycache__/
 nlp/
+Mallet/
+.ipynb_checkpoints/
