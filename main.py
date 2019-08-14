@@ -1,3 +1,5 @@
+#-*- coding: utf-8 -*-
+
 """
 This class implements the main function of the classifier. Provides an Command Line Interface to trigger the
 different functionalities of the program
@@ -13,16 +15,16 @@ from multiprocessing.pool import ThreadPool
 import sys
 import re
 
-from helpers import get_db_connection, split_array, remove_duplicates
+from helpers.helpers import get_db_connection, split_array, remove_duplicates
 from text_extractor.text_extractor import start_text_extraction
 from database_generator.bid_crawler import get_urls_to_crawl
 from database_generator.bid_crawler import start_crawl
 from topic_modeler.model_generator import train_model 
-from config import db_logger
-from config import DB_TABLE_STRUCTURE
+from setup.config import db_logger
+from setup.config import DB_TABLE_STRUCTURE
 
-# from threading import ThreadPool
-# from threading import Lock
+from threading import Thread
+from threading import Lock
 from copy import deepcopy
 
 cpvs4docs = dict()
@@ -58,19 +60,22 @@ def extract_text_from_docs():
 
     :return:
     """
-
     select_qy = "select code, code_description from bid_cpv_codes inner join docs on bid_cpv_codes.bid_id = docs.bid_id WHERE docs.doc_type = 'tecnico' AND docs.idioma IS NULL group by code, code_description"
-    chosen_code, path = create_cpv_code_menu(select_qy, cpvs4docs)
+    chosen_code, path = create_cpv_code_menu(select_qy)
     if not path:
         return
-    print(chosen_code)
+    # print(chosen_code)
     # print(f'Extracting text from documents related to CPV code {chosen_code}...')
-    select_qy = f"SELECT distinct docs.doc_url FROM docs LEFT JOIN texts ON docs.doc_url=texts.doc_url WHERE docs.doc_type='tecnico' AND docs.idioma is NULL"
-
-    num_processes = 1
-
+    select_qy = f"SELECT distinct doc_url FROM docs WHERE docs.doc_type='tecnico' AND docs.idioma is NULL"
     df = db_conn.custom_select_query(select_qy)
-    urls = df['doc_url'].tolist()
+    doc_urls = df['doc_url'].tolist()
+    select_qy = f"SELECT distinct doc_url FROM texts"
+    df = db_conn.custom_select_query(select_qy)
+    text_urls = df['doc_url'].tolist()
+    
+    urls = [url for url in doc_urls if url not in text_urls]
+
+
     # print('Obtaining doc urls for chosen cpv code')
     if len(chosen_code) == 8:
         select_qy = f"SELECT distinct doc_url FROM docs INNER JOIN bid_cpv_codes ON docs.bid_id = bid_cpv_codes.bid_id WHERE code = '{chosen_code}'"
@@ -83,13 +88,13 @@ def extract_text_from_docs():
         df = db_conn.custom_select_query(select_qy)
         filtered_urls = df['doc_url'].tolist()
         urls = [url for url in urls if url in filtered_urls]
-        print(len(urls))
     # print('Finished queries')
-    urls = split_array(urls, len(urls) // num_processes)
-    # start_text_extraction(url)
-    p = ThreadPool(num_processes)
-    p.map(start_text_extraction, urls)
-    print('Finished parsing docs!')
+    # urls = split_array(urls, len(urls) // num_processes)
+    # for url in urls:
+    start_text_extraction(urls)
+    # p = Pool(num_processes)
+    # p.map(start_text_extraction, urls)
+    # print('Finished parsing docs!')
 
 
 def generate_model():
@@ -123,12 +128,13 @@ def reconstruct_database():
     update_database()
 
 
-def create_cpv_code_menu(select_qy, cpv_list):
+def create_cpv_code_menu(select_qy):
     global db_conn
-    if not cpv_list:
-        cpv_list = create_cpv_tree(db_conn, select_qy)
+    global cpvs4docs
+    if not cpvs4docs:
+        cpvs4docs = create_cpv_tree(db_conn, select_qy)
     path = list()
-    shown_cpvs = cpv_list
+    shown_cpvs = cpvs4docs
     chosen_code = str()
     # Once we have created the dict, we need a menu for nevgating through all codes:
     while True:
@@ -156,12 +162,14 @@ def create_cpv_code_menu(select_qy, cpv_list):
             path.append(submenu[option])
             chosen_code = submenu[option].rstrip('0')
             if 'inner' in shown_cpvs[submenu[option]]:
-                if len(shown_cpvs[submenu[option]]['inner'].keys()) > 1:
-                    shown_cpvs = shown_cpvs[submenu[option]]['inner']
-                else:
-                    # If there is only one subcode, just take the code without showing a further menu
-                    chosen_code = list(shown_cpvs[submenu[option]]['inner'].keys())[0]
-                    break
+                # if len(shown_cpvs[submenu[option]]['inner'].keys()) > 1:
+                #     shown_cpvs = shown_cpvs[submenu[option]]['inner']
+                # else:
+                #     # If there is only one subcode, just take the code without showing a further menu
+                #     chosen_code = list(shown_cpvs[submenu[option]]['inner'].keys())[0]
+                #     break
+                shown_cpvs = shown_cpvs[submenu[option]]['inner']
+
             else:
                 # If the current code has not sub codes, then take it
                 chosen_code = submenu[option]
@@ -211,26 +219,30 @@ def find_sub_codes(upper_code, subcode2uppercode_map, codes, descs):
     return subcode_dict
 
 
-actions = {'1': update_database, '2': extract_text_from_docs, '3': reconstruct_database,
-           '4': generate_model, '0': exit}
+actions = {'1': {'title': 'Re/construct database structure', 'function': reconstruct_database},
+           '2': {'title': 'Update bids', 'function': update_database}, 
+           '3': {'title': 'Extract text from documents', 'function': extract_text_from_docs}, 
+           # '4': {'title': 'Generate topic model', 'function': generate_model}, 
+           '0': {'title': 'Exit', 'function': exit}
+           }
 
 
 # Show Main menu
 def start_main_menu():
     while (True):
         print("Choose one of the following actions:")
-        print("1. Fill database")
-        print("2. Extract text from documents")
-        print("3. [Re]Construct database from scratch")
-        print("4. Generate topic model")
-        print("\n0. Exit")
+        for action in actions:
+            if action == '0':
+                print(f'\n{action}. {actions[action]["title"]}')
+            else:
+                print(f'{action}. {actions[action]["title"]}')
         option = input(" >>  ")
         if option in actions:
-            actions[option]()
+            actions[option]['function']()
         else:
             print('Invalid option')
 
 
 if __name__ == '__main__':
-    print("Welcome")
+    print("Welcome to PCSP's data processor,")
     start_main_menu()

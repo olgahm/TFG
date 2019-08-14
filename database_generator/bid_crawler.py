@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 from io import BytesIO
 import os
 
@@ -6,15 +7,14 @@ import re
 import requests
 import zipfile
 
-from config import db_logger
+from setup.config import db_logger
 from database_generator.atom_parser import clean_atom_elements
 from database_generator.atom_parser import get_next_link
 from database_generator.atom_parser import parse_atom_feed
 # from database_generator.db_helpers import get_data_from_table
 
-from helpers import get_db_connection
-from config import db_logger
-from config import ROOT_DIR
+from helpers.helpers import get_db_connection
+from setup.config import db_logger
 from lxml import etree
 from datetime import datetime
 
@@ -32,8 +32,8 @@ def get_urls_to_crawl():
 
     # Check if any of the historic bids have already been processed and stored in database
     unprocessed_historic_files = list()
-    if os.path.exists(os.path.join(ROOT_DIR, 'processed_zips.txt')):
-        with open(os.path.join(ROOT_DIR, 'processed_zips.txt')) as f:
+    if os.path.exists('database_generator/processed_zips.txt'):
+        with open('database_generator/processed_zips.txt') as f:
             processed_zips = [url.strip() for url in f.readlines()]
             for url in historic_atom_files:
                 if url not in processed_zips:
@@ -79,7 +79,7 @@ def parse_zip(url, db_conn, lock):
                                                             crawled_urls=crawled_urls)
     db_logger.debug(f'Finished processing zip file {url}')
     lock.acquire()
-    with open(os.path.join(ROOT_DIR, 'processed_zips.txt'), 'a') as f:
+    with open('database_generator/processed_zips.txt', 'a') as f:
         f.write(f'{url}\n')
     lock.release()
 

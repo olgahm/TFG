@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 """
 helpers.py
 Functions to ease some needed tasks
@@ -7,8 +8,8 @@ import re
 
 from unidecode import unidecode
 
-from BaseDMsql import BaseDMsql
-from config import DB_CONNECTION_PARAMS, DB_TABLE_STRUCTURE
+from helpers.BaseDMsql import BaseDMsql
+from setup.config import DB_CONNECTION_PARAMS, DB_TABLE_STRUCTURE
 
 
 def get_db_connection():
@@ -140,6 +141,7 @@ def remove_duplicates(table=None):
     else:
         tablenames = mysql_connection.getTableNames()
     for tablename in tablenames:
+        print(tablename)
         if DB_TABLE_STRUCTURE[tablename]['primary_key'] is None:
             # Rename table for taking only unique records
             column_names = ', '.join(mysql_connection.getColumnNames(tablename))

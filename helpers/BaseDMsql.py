@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 """
 This class provides functionality for managing a generig sqlite or mysql
 database:

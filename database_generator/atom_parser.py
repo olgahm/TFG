@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 from lxml import etree
 import requests
 import re
@@ -5,8 +6,8 @@ import iso8601
 import pytz
 # from database_generator.db_helpers import is_stored
 # from database_generator.db_helpers import get_data_from_table
-from helpers import insert_or_update_records
-from config import db_logger
+from helpers.helpers import insert_or_update_records
+from setup.config import db_logger
 from unidecode import unidecode
 from datetime import datetime, timedelta
 from collections import Counter
@@ -20,16 +21,15 @@ bid_schema = {"bid_uri": None, "title": None, "summary": None, "link": None, "de
               "organo_de_contratacion": None, "proveedor_pliegos": None, "receptor_ofertas": None,
               "deadline_descripcion": None, "formula_revision_precio": None, "programa_financiacion": None,
               "titulo_habilitante": None, "descripcion_requisitos_participacion": None,
-              "clasificacion_empresarial_solicitada": None, "codigo_clasificacion_empresarial_solicitada": None,
-              "condiciones_admision": None, "objeto_subcontratacion": None, "id_sobre": None,
-              "tipo_documento_sobre": None, "descripcion_preparacion_oferta": None, "condiciones_adjudicacion": None,
+              "objeto_subcontratacion": None, "id_sobre": None,
+              "tipo_documento_sobre": None, "descripcion_preparacion_oferta": None,
               "criterio_limitacion_numero_candidatos": None, "codigo_justificacion_proceso_extraordinario": None,
               "descripcion_justificacion_proceso_extraordinario": None, "deleted_at": None, "last_updated": None,
               "plazo_pliegos": None, "plazo_presentacion": None, "valor_estimado": None,
               "presupuesto_base_sin_impuestos": None, "presupuesto_base_total": None,
-              "porcentaje_maximo_subcontratacion": None, "ponderacion_adjudicacion": None, "fecha_inicio": None,
+              "porcentaje_maximo_subcontratacion": None, "fecha_inicio": None,
               "fecha_fin": None, "curriculum_requerido": None, "admision_variantes": None, "candidatos_esperados": None,
-              "candidatos_maximos": None, "candidatos_minimos": None}
+              "candidatos_maximos": None, "candidatos_minimos": None, "proveedor_informacion_adicional": None}
 doc_schema = {"doc_id": None, "doc_url": None, "bid_id": None, "doc_type": None, "doc_hash": None}
 org_schema = {"nombre": None, "tipo_organismo": None, "uri": None, "id": None, "direccion": None, "cp": None,
               "ciudad": None, "pais": None, "nombre_contacto": None, "telefono_contacto": None, "fax_contacto": None,

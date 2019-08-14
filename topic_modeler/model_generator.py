@@ -1,29 +1,32 @@
+#-*- coding: utf-8 -*-
+
 # from topic_modeler.text_preprocessor import preprocess_corpus
 # from topic_modeler.text_preprocessor import join_long_docs
-from helpers import get_db_connection, construct_dupes_dict
-from config import MALLET_BINARY_PATH
+from helpers.helpers import get_db_connection, construct_dupes_dict
+from setup.config import MALLET_BINARY_PATH
 from gensim import corpora
 from gensim.models import LdaModel
 from gensim.models.wrappers import LdaMallet
+from gensim.models.wrappers import ldamallet
 from gensim.test.utils import datapath
 from vocabulary_generator.text_cleaner import remove_accents, remove_irrelevant_tokens, apply_equivalences
 import pyLDAvis.gensim
 import sys
 
+'español' == 'español'
 
-def train_model(num_topics):
+def train_model(num_topics, documents):
     
-    documents = get_tokens()
+    # documents = get_dictionary()
     dictionary = corpora.Dictionary(documents)
     max_tokens = len(dictionary.keys())
-    print(f'Num tokens before cleanup {len(dictionary.keys())}')
-    dictionary.filter_extremes(no_below=10, no_above=0.6, keep_n=max_tokens)
-    print(f'Num tokens after cleanup {len(dictionary.keys())}')
+    # print(f'Num tokens before cleanup {len(dictionary.keys())}')
+    dictionary.filter_extremes(no_below=10, no_above=0.7, keep_n=max_tokens)
+    # print(f'Num tokens after cleanup {len(dictionary.keys())}')
     corpus_bow = [dictionary.doc2bow(doc) for doc in documents]
     mallet_model = LdaMallet(mallet_path=MALLET_BINARY_PATH, corpus=corpus_bow, id2word=dictionary, num_topics=num_topics)
     lda_model = ldamallet.malletmodel2ldamodel(mallet_model)
-    save_model(model, len(documents), num_topics)
-    return model
+    return lda_model, corpus_bow, dictionary
     # Save model to file for loading from notebook
 
 
@@ -36,7 +39,7 @@ def train_model(num_topics):
     # print('pyldavis started')
 
 
-def get_tokens():
+def get_dictionary():
     db_conn = get_db_connection()
 
     df = db_conn.readDBtable(tablename='texts')
@@ -48,9 +51,9 @@ def get_tokens():
     documents = list()
     for doc in doc_dupes_dict:
         indices = doc_dupes_dict[doc]
-        token_lists = [remove_accents(tokens[index]).split() for index in indices]
+        token_lists = [remove_accents(tokens[index]).replace('ñ', 'ñ').split() for index in indices]
         doc_tokens = [token for token_list in token_lists for token in token_list]
-        doc_tokens = apply_equivalences(remove_irrelevant_tokens(doc_tokens))
+        doc_tokens = remove_irrelevant_tokens(apply_equivalences(doc_tokens))
         documents.append(doc_tokens)
     return documents
 

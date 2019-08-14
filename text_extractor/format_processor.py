@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 import re
 import zipfile
 from io import BytesIO
@@ -6,7 +7,7 @@ import rarfile
 import requests
 from bs4 import BeautifulSoup
 
-from config import FILE_EXTENSIONS_TO_PARSE, FILE_EXTENSIONS_TO_IGNORE, FINAL_CONTENT_TYPES_TO_PARSE, FINAL_CONTENT_TYPES_TO_IGNORE, text_logger
+from setup.config import FILE_EXTENSIONS_TO_PARSE, FILE_EXTENSIONS_TO_IGNORE, FINAL_CONTENT_TYPES_TO_PARSE, FINAL_CONTENT_TYPES_TO_IGNORE, text_logger
 from urllib.parse import urlparse
 import sys
 
@@ -51,9 +52,8 @@ def html_to_doc(url, response, db_conn):
                 print(f'Found {content_type} in html after analyzing it. Need further processing?')
                 return None
         elif content_type in FINAL_CONTENT_TYPES_TO_IGNORE:
-            print('Got content type to ignore. Deleting from database...')
-            text_logger.debug('Got content type to ignore. Deleting from database...')
-            db_conn.deleteRowTables('docs', f"doc_url='{url}'")
+            text_logger.debug('Got content type to ignore')
+            # db_conn.deleteRowTables('docs', f"doc_url='{url}'")
         else:
             return [buffer]
 
@@ -143,6 +143,6 @@ def parse_pcsp_html(url, response, db_conn):
 
 content_type_parsing_functions = {'text/html': html_to_doc}
 html_processing_by_domain_map = {
-    'ignore': ['https://apps.euskadi.eus/', 'https://contractaciopublica.gencat.cat'],
+    'ignore': ['https://apps.euskadi.eus/', 'https://contractaciopublica.gencat.cat', 'http://www.contratacion.euskadi.eus/'],
     'https://contrataciondelestado.es:443/': parse_pcsp_html,
     'https://contrataciondelestado.es/': parse_pcsp_html}

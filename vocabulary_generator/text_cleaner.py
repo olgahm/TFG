@@ -1,3 +1,4 @@
+#-*- coding: utf-8 -*-
 import json
 import re
 import unicodedata
@@ -6,8 +7,8 @@ import nltk
 import requests
 from nltk.corpus import stopwords
 
-from config import IRRELEVANT_STRINGS, text_logger, CUSTOM_STOPWORDS, EQUIVALENCES
-from helpers import split_array
+from setup.config import IRRELEVANT_STRINGS, text_logger, CUSTOM_STOPWORDS, EQUIVALENCES
+from helpers.helpers import split_array
 
 
 def clear_irrelevant_strings(raw_text):
@@ -71,8 +72,8 @@ def remove_irrelevant_tokens(tokens):
        words
     """
     vowels = "aeiouAEIOU"
-    tokens = [token for token in tokens if token not in CUSTOM_STOPWORDS and any(char in vowels for char in token)]
-    
+    tokens = [token for token in tokens if token not in CUSTOM_STOPWORDS]
+    tokens = [token for token in tokens if any(char in vowels for char in token)]
     return tokens
 
 def remove_accents(text):

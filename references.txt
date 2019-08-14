@@ -1,8 +1,0 @@
-https://radimrehurek.com/gensim/
-https://en.wikipedia.org/wiki/Vector_space_model
-https://en.wikipedia.org/wiki/Tf%E2%80%93idf
-https://stackoverflow.com/questions/52416268/how-to-use-pdfminer-sixs-pdf2txt-py-in-python-script-and-outside-command-line: Codigo para usar pdfminer en windows
-https://wiki.apache.org/tika/PDFParser%20%28Apache%20PDFBox%29
-https://stackoverflow.com/questions/48103065/python-tika-returning-none-content-for-pdfs-but-works-with-tiffs
-https://contrataciondelestado.es/wps/portal/!ut/p/b1/04_Sj9Q1sjA0MDc3NjXRj9CPykssy0xPLMnMz0vMAfGjzOKdgi0sHJ0MHQ0MjEMtDBzNAgOdLV0MjAwsjYEKIoEKDHAARwNC-sP1o8BKTI2dTcK8wgLMgj3dDQw8PdxcfEINTQ3cjcygCvBY4eeRn5uqnxuVY-mp66gIAFIj3lk!/dl4/d5/L2dJQSEvUUt3QS80SmtFL1o2X0FWRVFBSTkzME8xS0MwMkJOMFNHTUgzMFEz/
-https://contrataciondelestado.es/wps/portal/info/ProteccionDeDatos/!ut/p/b1/jY-xDoIwAES_hQ8wPdpS2rEUkKJRQUHtYhiMwaAuxu9XCZOJ6G2XvJfLEUf2Eyp9hCELONkRd20e7am5t7dr0727E4doLaWOfA1UMoHmZZjDGIbUfwH7F4Av0fjwWSWhRVEYFYNCscHXdVJoqxiW-cyAlrxOskhRbPh_-yMDP_wtcT0SMMPrvF6JtZ0CNkvjeeUHmFIxAGMXe2DkwyK7XY7k4ro0VfbMtec9AcfeaIE!/dl4/d5/L2dJQSEvUUt3QS80SmtFL1o2X0JTODhBQjFBMDBVOEUwQTRSN0owQ0MzMEYx/

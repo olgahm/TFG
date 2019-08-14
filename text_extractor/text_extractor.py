@@ -1,3 +1,5 @@
+#-*- coding: utf-8 -*-
+
 from time import sleep
 
 import requests
@@ -5,8 +7,8 @@ from requests import HTTPError
 from textblob import TextBlob
 from tika import parser
 
-from helpers import get_db_connection, split_array, insert_or_update_records
-from config import text_logger, FINAL_CONTENT_TYPES_TO_PARSE
+from helpers.helpers import get_db_connection, split_array, insert_or_update_records
+from setup.config import text_logger, FINAL_CONTENT_TYPES_TO_PARSE
 from text_extractor.format_processor import content_type_parsing_functions, html_processing_by_domain_map
 from urllib.parse import urlparse
 
@@ -104,6 +106,10 @@ def url_to_doc(url, db_conn):
         # print(f'Error {response.status_code} for url {url}. Deleting entry from docs table...')
         db_conn.deleteRowTables('docs', f"doc_url='{url}'")
         return
+    except BaseException as e:
+        print(e)
+        print(url)
+        return
     content_type = response.headers['Content-Type'].split(';')[0]
     if content_type in FINAL_CONTENT_TYPES_TO_PARSE:
         format_function = content_type_parsing_functions.get(content_type)
@@ -159,20 +165,27 @@ def extract_text(url, buffer):
         if tika_resp.get('content') is None or not text or len(text.split()) <= 2:
             # Sometimes this first OCR approach fails
             if tika_resp.get('status') == 422:
-                print(url)
+                # print(url)
+                # print('Got 422 code for basic ocr. Parsing a second time...')
                 """
                 Tika setup for OCR. This mechanism performs OCR to all in line images
                 individually
                 """    
+                text_logger.debug('No text could be extracted with first OCR processing.' \
+                           'Appliying OCR to buffer by analyzing inline images...')
                 headers = {'X-Tika-PDFExtractInlineImages': 'true', 'X-Tika-OCRLanguage': 'spa'}
                 tika_resp = parser.from_buffer(buffer, headers=headers)
                 ocr = True
                 text = str()
                 if tika_resp.get('content') is not None:
+                    # print('Text extracted after second OCR parsing')
+                    text_logger.debug('Text extracted after second OCR parsing')
                     text = tika_resp['content']
                     text = clean_text(text)
+                    # print(text)
                 if tika_resp.get('content') is None or not text or len(text.split()) <= 2:
-                    text_logger.debug('No text could be extracted after OCR processing')
+                    # print('No text could be extracted after second OCR processing')
+                    text_logger.debug('No text could be extracted after second OCR processing')
                     return '', '', False
             if not text or len(text.split()) <= 2:
                 text_logger.debug('No text could be extracted after OCR processing')
