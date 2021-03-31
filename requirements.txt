@@ -1,7 +1,7 @@
 bs4==0.0.1
 gensim==3.8.0
 iso8601==0.1.12
-lxml==4.3.3
+lxml==4.6.3
 nltk==3.4.3
 pandas==0.24.2
 pymysql==0.9.3
